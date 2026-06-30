@@ -1,0 +1,6 @@
+{
+  "name": "AzurLize Management System",
+  "description": "An elegant recruitment operations management system with HR tools, performance tracking, executive dashboards, and payroll management.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
