@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Login } from './components/Auth';
+import { LandingPage } from './components/LandingPage';
 import { ExecutiveDashboard } from './components/ExecutiveDashboard';
 import { Performance } from './components/Performance';
 import { DailyData } from './components/DailyData';
@@ -9,7 +10,8 @@ import { Payroll } from './components/Payroll';
 import { UserManagement } from './components/UserManagement';
 import { SystemSettings } from './components/SystemSettings';
 import { InstallPWA } from './components/InstallPWA';
-import { getSavedPermissions } from './utils';
+import { getSavedPermissions, SCRIPT_URL } from './utils';
+import { AvatarUpload } from './components/AvatarUpload';
 
 export default function App() {
     const [authUser, setAuthUser] = useState<any>(() => {
@@ -20,7 +22,7 @@ export default function App() {
             return null;
         }
     });
-    const [authView, setAuthView] = useState('login');
+    const [authView, setAuthView] = useState('landing');
     const [activeTab, setActiveTab] = useState('dashboard');
     const [isSidebarOpen, setSidebarOpen] = useState(false);
     const [isDark, setIsDark] = useState(() => localStorage.getItem('recruitOps_theme') === 'dark');
@@ -29,13 +31,58 @@ export default function App() {
     const [lastSynced, setLastSynced] = useState<Date>(new Date());
     const [isSyncingGlobal, setIsSyncingGlobal] = useState(false);
     const [permissions, setPermissions] = useState(() => getSavedPermissions());
+    const [isAvatarUploadOpen, setIsAvatarUploadOpen] = useState(false);
+
+    useEffect(() => {
+        const fetchPermissions = async () => {
+            try {
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({ action: 'getPermissions' })
+                });
+                const result = await response.json();
+                if (result.status === 'success' && result.data && Object.keys(result.data).length > 0) {
+                    localStorage.setItem('recruitOps_permissions_v2', JSON.stringify(result.data));
+                    setPermissions(result.data);
+                }
+            } catch (error) {
+                console.error("Gagal memuat permissions dari database:", error);
+            }
+        };
+        fetchPermissions();
+    }, []);
+
+    const handleAvatarSuccess = (newPhotoUrl: string) => {
+        const updatedAuth = {
+            ...authUser,
+            photoUrl: newPhotoUrl,
+            photo: newPhotoUrl
+        };
+        setAuthUser(updatedAuth);
+        localStorage.setItem('recruitOps_session', JSON.stringify(updatedAuth));
+        
+        // Trigger a global refresh event so other components know data changed
+        window.dispatchEvent(new Event('refreshActiveTab'));
+    };
 
     useEffect(() => {
         const handlePermsUpdated = () => {
             setPermissions(getSavedPermissions());
         };
+        const handleSessionUpdated = () => {
+            try {
+                const saved = localStorage.getItem('recruitOps_session');
+                if (saved) {
+                    setAuthUser(JSON.parse(saved));
+                }
+            } catch (e) {}
+        };
         window.addEventListener('permissionsUpdated', handlePermsUpdated);
-        return () => window.removeEventListener('permissionsUpdated', handlePermsUpdated);
+        window.addEventListener('sessionUpdated', handleSessionUpdated);
+        return () => {
+            window.removeEventListener('permissionsUpdated', handlePermsUpdated);
+            window.removeEventListener('sessionUpdated', handleSessionUpdated);
+        };
     }, []);
 
     const triggerGlobalSync = () => {
@@ -244,36 +291,77 @@ export default function App() {
 
     if (isCheckingSession) return (<div className={`h-dvh flex items-center justify-center ${isDark ? 'dark bg-gray-900' : 'bg-[#F8FAFC]'}`}><div className="flex flex-col items-center"><i className="ph-bold ph-spinner ph-spin text-4xl text-indigo-600 dark:text-indigo-400 mb-4"></i><span className="text-gray-500 dark:text-gray-400 font-bold text-sm">Memuat ruang kerja...</span></div></div>);
     
-    if (!authUser) return (
-        <div className={isDark ? 'dark' : ''}>
-            <Login 
-                onLogin={login} 
-                isDark={isDark} 
-                onToggleDark={() => setIsDark(!isDark)} 
-            />
-        </div>
-    );
+    if (!authUser) {
+        if (authView === 'landing') {
+            return (
+                <div className={isDark ? 'dark' : ''}>
+                    <LandingPage 
+                        onEnterLogin={() => setAuthView('login')}
+                        isDark={isDark}
+                        onToggleDark={() => setIsDark(!isDark)}
+                    />
+                </div>
+            );
+        }
+        return (
+            <div className={isDark ? 'dark' : ''}>
+                <Login 
+                    onLogin={login} 
+                    onBack={() => setAuthView('landing')}
+                    isDark={isDark} 
+                    onToggleDark={() => setIsDark(!isDark)} 
+                />
+            </div>
+        );
+    }
 
-    const NAVIGATION = [
-        { s: 'Overview', allowed: ['Superadmin', 'Admin', 'Staff'], items: [
-            { id: 'dashboard', l: 'Dashboard', i: 'ph-squares-four', roles: permissions.dashboard?.view || ['Superadmin', 'Admin', 'Staff'] }
-        ] },
-        { s: 'Performance', allowed: ['Superadmin', 'Admin', 'Staff'], items: [
-            { id: 'performance', l: 'Performance', i: 'ph-medal', roles: permissions.performance?.view || ['Superadmin', 'Admin', 'Staff'] }
-        ] },
-        { s: 'Management', allowed: ['Superadmin', 'Admin', 'Staff'], items: [
-            { id: 'daily_data', l: 'Daily Data', i: 'ph-address-book', roles: permissions.daily_data?.view || ['Superadmin', 'Admin', 'Staff'] }, 
-            { id: 'daily_stats', l: 'Daily Stats', i: 'ph-chart-bar', roles: permissions.daily_stats?.view || ['Superadmin', 'Admin', 'Staff'] }, 
-            { id: 'payroll', l: 'Payroll', i: 'ph-currency-circle-dollar', roles: permissions.payroll?.view || ['Superadmin', 'Admin', 'Staff'] }, 
-            { id: 'users', l: 'User Accounts', i: 'ph-user-gear', roles: permissions.users?.view || ['Superadmin', 'Admin', 'Staff'] }
-        ] },
-        { s: 'System', allowed: ['Superadmin'], items: [
-            { id: 'settings', l: 'Settings', i: 'ph-gear', roles: permissions.settings?.view || ['Superadmin'] }
-        ] }
-    ].map(sec => ({
-        ...sec,
-        items: sec.items.filter(item => item.roles.map((r: string) => r.toLowerCase()).includes(authUser.role.toLowerCase()))
-    })).filter(sec => sec.items.length > 0 && sec.allowed.map((r: string) => r.toLowerCase()).includes(authUser.role.toLowerCase()));
+    // Dynamically build navigation from permissions data stored in the sheet/DB
+    const orderedPages = Object.entries(permissions)
+        .map(([id, val]: [string, any]) => ({
+            id,
+            name: val.name || id,
+            view: val.view || ['Superadmin', 'Admin', 'Staff'],
+            edit: val.edit || ['Superadmin', 'Admin'],
+            orderIndex: val.orderIndex !== undefined ? val.orderIndex : 99,
+            icon: val.icon || 'ph-squares-four',
+            category: val.category || 'Overview'
+        }))
+        .sort((a, b) => a.orderIndex - b.orderIndex);
+
+    // Group pages by category to match the layout
+    const categoriesMap: Record<string, any[]> = {};
+    orderedPages.forEach(page => {
+        const cat = page.category || 'Overview';
+        if (!categoriesMap[cat]) {
+            categoriesMap[cat] = [];
+        }
+        categoriesMap[cat].push({
+            id: page.id,
+            l: page.name,
+            i: page.icon,
+            roles: page.view
+        });
+    });
+
+    // We can define the categories order
+    const categoryOrder = ['Overview', 'Performance', 'Management', 'System'];
+    const NAVIGATION = Object.keys(categoriesMap)
+        .sort((a, b) => {
+            const idxA = categoryOrder.indexOf(a);
+            const idxB = categoryOrder.indexOf(b);
+            if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+            if (idxA !== -1) return -1;
+            if (idxB !== -1) return 1;
+            return a.localeCompare(b);
+        })
+        .map(catName => ({
+            s: catName,
+            allowed: ['Superadmin', 'Admin', 'Staff'],
+            items: categoriesMap[catName].filter(item => 
+                item.roles.map((r: string) => r.toLowerCase()).includes(authUser.role.toLowerCase())
+            )
+        }))
+        .filter(sec => sec.items.length > 0);
 
     let pageTitle = 'Dashboard'; NAVIGATION.forEach(sec => sec.items.forEach(item => { if(item.id === activeTab) pageTitle = item.l; }));
 
@@ -309,7 +397,7 @@ export default function App() {
             case 'daily_stats': content = <DailyStats authUser={authUser} />; break;
             case 'payroll': content = <Payroll authUser={authUser} />; break;
             case 'users': content = <UserManagement authUser={authUser} />; break;
-            case 'settings': content = <SystemSettings />; break;
+            case 'settings': content = <SystemSettings authUser={authUser} />; break;
             default: content = <ExecutiveDashboard authUser={authUser} />; break;
         }
 
@@ -401,10 +489,28 @@ export default function App() {
                                     {/* Profile Card inside Bottom Sheet */}
                                     <div className="p-4 rounded-2xl bg-gray-50 dark:bg-gray-800/30 border border-gray-100 dark:border-gray-800/60 flex items-center justify-between shadow-sm">
                                         <div className="flex items-center gap-3">
-                                            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-xl text-white shadow-md ${roleStyle.avatarBg} relative`}>
-                                                {authUser.name && typeof authUser.name === 'string' ? authUser.name.charAt(0).toUpperCase() : 'U'}
-                                                <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-emerald-500 border-2 border-white dark:border-gray-800 rounded-full"></span>
-                                            </div>
+                                            <button 
+                                                onClick={() => setIsAvatarUploadOpen(true)}
+                                                title="Ganti Foto Profil"
+                                                className="relative shrink-0 group focus:outline-none cursor-pointer"
+                                            >
+                                                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-xl text-white shadow-md ${roleStyle.avatarBg} overflow-hidden relative transition-transform group-hover:scale-105 duration-300`}>
+                                                    {authUser.photoUrl || authUser.photo ? (
+                                                        <img 
+                                                            src={authUser.photoUrl || authUser.photo} 
+                                                            alt={authUser.name} 
+                                                            referrerPolicy="no-referrer"
+                                                            className="w-full h-full object-cover animate-fade-in"
+                                                        />
+                                                    ) : (
+                                                        authUser.name && typeof authUser.name === 'string' ? authUser.name.charAt(0).toUpperCase() : 'U'
+                                                    )}
+                                                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <i className="ph-bold ph-camera text-white text-base"></i>
+                                                    </div>
+                                                </div>
+                                                <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-emerald-500 border-2 border-white dark:border-gray-800 rounded-full z-10"></span>
+                                            </button>
                                             <div>
                                                 <h4 className="text-sm font-black text-gray-900 dark:text-white truncate max-w-[150px]">{authUser.name || 'User'}</h4>
                                                 <span className={`text-[9px] uppercase font-black tracking-wider ${roleStyle.textRole}`}>{authUser.role || 'Staff'}</span>
@@ -549,10 +655,28 @@ export default function App() {
                     {/* Profil Bawah Sidebar Card */}
                     <div className="p-4 mx-4 mb-4 mt-2 border border-gray-200/80 dark:border-gray-700/80 rounded-2xl bg-white/50 dark:bg-[#1a202c]/50 backdrop-blur-md shadow-sm flex items-center justify-between group hover:border-indigo-300 dark:hover:border-indigo-500/50 transition-colors">
                         <div className="flex items-center min-w-0 flex-1">
-                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-lg text-white shrink-0 shadow-md ${roleStyle.avatarBg} relative`}>
-                                {authUser.name && typeof authUser.name === 'string' ? authUser.name.charAt(0).toUpperCase() : 'U'}
-                                <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-emerald-500 border-2 border-white dark:border-gray-800 rounded-full"></div>
-                            </div>
+                            <button 
+                                onClick={() => setIsAvatarUploadOpen(true)}
+                                title="Ganti Foto Profil"
+                                className="relative shrink-0 group focus:outline-none cursor-pointer"
+                            >
+                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-lg text-white shrink-0 shadow-md ${roleStyle.avatarBg} overflow-hidden relative transition-transform group-hover:scale-105 duration-300`}>
+                                    {authUser.photoUrl || authUser.photo ? (
+                                        <img 
+                                            src={authUser.photoUrl || authUser.photo} 
+                                            alt={authUser.name} 
+                                            referrerPolicy="no-referrer"
+                                            className="w-full h-full object-cover animate-fade-in"
+                                        />
+                                    ) : (
+                                        authUser.name && typeof authUser.name === 'string' ? authUser.name.charAt(0).toUpperCase() : 'U'
+                                    )}
+                                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <i className="ph-bold ph-camera text-white text-xs"></i>
+                                    </div>
+                                </div>
+                                <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-emerald-500 border-2 border-white dark:border-gray-800 rounded-full z-10"></div>
+                            </button>
                             <div className="ml-3 min-w-0 pr-2">
                                 <p className="text-sm font-black text-gray-900 dark:text-white truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">{authUser.name || 'User'}</p>
                                 <p className={`text-[9px] uppercase font-black tracking-widest truncate ${roleStyle.textRole}`}>{authUser.role || 'Staff'}</p>
@@ -566,7 +690,7 @@ export default function App() {
 
                 <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative pb-24 lg:pb-0">
                     {/* Modern Top Header */}
-                    <header className="h-20 bg-white/70 dark:bg-[#0B0F19]/70 backdrop-blur-xl border-b border-gray-200/50 dark:border-gray-800/50 flex items-center justify-between px-4 sm:px-5 md:px-6 lg:px-10 z-10 shrink-0 sticky top-0">
+                    <header className="bg-white/70 dark:bg-[#0B0F19]/70 backdrop-blur-xl border-b border-gray-200/50 dark:border-gray-800/50 flex items-center justify-between px-4 sm:px-5 md:px-6 lg:px-10 z-10 shrink-0 sticky top-0 h-[calc(5rem+env(safe-area-inset-top))] pt-[env(safe-area-inset-top)]">
                         <div className="flex items-center min-w-0 flex-1 mr-3 sm:mr-6">
                             {isMobile && (
                                 <button onClick={()=>setSidebarOpen(true)} className="mr-3 sm:mr-4 text-gray-500 hover:text-indigo-600 bg-gray-100 dark:bg-gray-800 w-9 h-9 rounded-xl flex items-center justify-center transition-colors shadow-sm shrink-0">
@@ -651,9 +775,21 @@ export default function App() {
                 </main>
             </div>
 
+            {/* Avatar Upload Modal */}
+            {authUser && (
+                <AvatarUpload
+                    isOpen={isAvatarUploadOpen}
+                    onClose={() => setIsAvatarUploadOpen(false)}
+                    currentPhotoUrl={authUser.photoUrl || authUser.photo}
+                    username={authUser.username}
+                    name={authUser.name}
+                    onUploadSuccess={handleAvatarSuccess}
+                />
+            )}
+
             {/* FLOATING BOTTOM NAV (Modern iOS Style for Mobile & Tablet) */}
             {isMobile && (
-                <div className="fixed bottom-5 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-xl z-40 animate-in slide-in-from-bottom-6 duration-500">
+                <div className="fixed bottom-5 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-xl z-40 animate-in slide-in-from-bottom-6 duration-500 pb-[env(safe-area-inset-bottom)]">
                     <nav className="bg-white/95 dark:bg-[#1a202c]/95 backdrop-blur-2xl border border-gray-200/50 dark:border-gray-700/50 rounded-[28px] flex justify-around items-center h-[72px] px-2 shadow-[0_20px_40px_rgba(0,0,0,0.15)] dark:shadow-[0_20px_40px_rgba(0,0,0,0.5)]">
                         {bottomNavItems.map((item) => {
                             const isActive = activeTab === item.id;

@@ -1,0 +1,351 @@
+import React, { useState, useRef } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { Camera, Upload, X, Check, Loader2, Image as ImageIcon } from 'lucide-react';
+import { SCRIPT_URL } from '../utils';
+
+interface AvatarUploadProps {
+    isOpen: boolean;
+    onClose: () => void;
+    currentPhotoUrl?: string;
+    username: string; // The username of the account to update
+    name: string;
+    onUploadSuccess: (newPhotoUrl: string) => void;
+}
+
+export const AvatarUpload: React.FC<AvatarUploadProps> = ({
+    isOpen,
+    onClose,
+    currentPhotoUrl,
+    username,
+    name,
+    onUploadSuccess,
+}) => {
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+    const [photoBase64, setPhotoBase64] = useState<string | null>(null);
+    const [photoMimeType, setPhotoMimeType] = useState<string | null>(null);
+    const [isDragging, setIsDragging] = useState(false);
+    const [isUploading, setIsUploading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const compressAndPrepareImage = (file: File) => {
+        setError(null);
+        setSuccessMessage(null);
+
+        if (!file.type.startsWith('image/')) {
+            setError('File yang diunggah harus berupa gambar!');
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                let width = img.width;
+                let height = img.height;
+                
+                // Max dimension for avatar to optimize bandwidth
+                const MAX_DIMENSION = 400;
+                if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
+                    if (width > height) {
+                        height = Math.round((height * MAX_DIMENSION) / width);
+                        width = MAX_DIMENSION;
+                    } else {
+                        width = Math.round((width * MAX_DIMENSION) / height);
+                        height = MAX_DIMENSION;
+                    }
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                    ctx.drawImage(img, 0, 0, width, height);
+                    // Compress to JPEG with 0.8 quality
+                    const compressedBase64 = canvas.toDataURL('image/jpeg', 0.8);
+                    setPreviewUrl(compressedBase64);
+                    setPhotoBase64(compressedBase64.split(',')[1]);
+                    setPhotoMimeType('image/jpeg');
+                } else {
+                    setError('Gagal memproses gambar.');
+                }
+            };
+            img.onerror = () => {
+                setError('Format gambar tidak didukung atau file rusak.');
+            };
+            img.src = e.target?.result as string;
+        };
+        reader.readAsDataURL(file);
+    };
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            compressAndPrepareImage(file);
+        }
+    };
+
+    const handleDragOver = (e: React.DragEvent) => {
+        e.preventDefault();
+        setIsDragging(true);
+    };
+
+    const handleDragLeave = () => {
+        setIsDragging(false);
+    };
+
+    const handleDrop = (e: React.DragEvent) => {
+        e.preventDefault();
+        setIsDragging(false);
+        const file = e.dataTransfer.files?.[0];
+        if (file) {
+            compressAndPrepareImage(file);
+        }
+    };
+
+    const triggerFileInput = () => {
+        fileInputRef.current?.click();
+    };
+
+    const handleSave = async () => {
+        if (!photoBase64 || !photoMimeType) {
+            setError('Silakan pilih atau unggah foto terlebih dahulu.');
+            return;
+        }
+
+        setIsUploading(true);
+        setError(null);
+
+        try {
+            // Build the update payload compatible with Google Apps Script's updateUser
+            const payload = {
+                action: 'updateUser',
+                username: username,
+                oldUsername: username,
+                photoBase64: photoBase64,
+                photoMimeType: photoMimeType,
+            };
+
+            const response = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'text/plain;charset=utf-8',
+                },
+                body: JSON.stringify(payload),
+            });
+
+            const result = await response.json();
+
+            if (result.status === 'success') {
+                // Fetch the updated users to get the LH3 direct URL generated by Google Drive,
+                // or fall back to the base64 URL if necessary
+                let finalPhotoUrl = previewUrl || '';
+                
+                try {
+                    const fetchUsersResponse = await fetch(SCRIPT_URL, {
+                        method: 'POST',
+                        body: JSON.stringify({ action: 'getUsers' }),
+                    });
+                    const usersResult = await fetchUsersResponse.json();
+                    if (usersResult.status === 'success' && Array.isArray(usersResult.data)) {
+                        const updatedUser = usersResult.data.find(
+                            (u: any) => String(u.username).toLowerCase() === username.toLowerCase()
+                        );
+                        if (updatedUser && (updatedUser.photoUrl || updatedUser.photo)) {
+                            finalPhotoUrl = updatedUser.photoUrl || updatedUser.photo;
+                        }
+                    }
+                } catch (e) {
+                    console.warn('Could not retrieve remote direct URL, using base64 placeholder:', e);
+                }
+
+                setSuccessMessage('Foto profil berhasil diperbarui!');
+                onUploadSuccess(finalPhotoUrl);
+                
+                // Auto close modal after a brief duration
+                setTimeout(() => {
+                    onClose();
+                    // Reset component state
+                    setPreviewUrl(null);
+                    setPhotoBase64(null);
+                    setPhotoMimeType(null);
+                    setSuccessMessage(null);
+                }, 1500);
+            } else {
+                setError(result.message || 'Gagal memperbarui foto di database.');
+            }
+        } catch (err) {
+            setError('Terjadi kesalahan koneksi saat mengunggah foto profil.');
+            console.error('Error uploading avatar:', err);
+        } finally {
+            setIsUploading(false);
+        }
+    };
+
+    return (
+        <AnimatePresence>
+            {isOpen && (
+                <div className="fixed inset-0 z-[250] flex items-center justify-center p-4">
+                    {/* Backdrop */}
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        onClick={isUploading ? undefined : onClose}
+                        className="absolute inset-0 bg-gray-950/70 backdrop-blur-sm"
+                    />
+
+                    {/* Modal Content */}
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.95, y: 15 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.95, y: 15 }}
+                        className="bg-white dark:bg-gray-800 rounded-3xl w-full max-w-md overflow-hidden relative z-10 border border-gray-100 dark:border-gray-700/60 shadow-2xl flex flex-col"
+                    >
+                        {/* Header */}
+                        <div className="px-6 py-5 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center">
+                            <div>
+                                <h3 className="font-black text-lg text-gray-900 dark:text-white flex items-center gap-2">
+                                    <Camera className="w-5 h-5 text-indigo-500" />
+                                    Unggah Foto Profil
+                                </h3>
+                                <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mt-0.5">
+                                    Akun: {username}
+                                </p>
+                            </div>
+                            <button
+                                onClick={onClose}
+                                disabled={isUploading}
+                                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/30 text-gray-400 dark:text-gray-500 transition-colors disabled:opacity-50"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {/* Body */}
+                        <div className="p-6 space-y-6 flex-1">
+                            {/* Drag & Drop Box */}
+                            <div
+                                onDragOver={handleDragOver}
+                                onDragLeave={handleDragLeave}
+                                onDrop={handleDrop}
+                                onClick={triggerFileInput}
+                                className={`border-2 border-dashed rounded-2xl p-6 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-300 relative group overflow-hidden ${
+                                    isDragging
+                                        ? 'border-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/20'
+                                        : previewUrl
+                                        ? 'border-emerald-500/30 bg-emerald-50/10 dark:bg-emerald-950/5'
+                                        : 'border-gray-200 dark:border-gray-700 hover:border-indigo-400 dark:hover:border-indigo-500/50 hover:bg-gray-50/50 dark:hover:bg-gray-800/30'
+                                }`}
+                            >
+                                <input
+                                    type="file"
+                                    ref={fileInputRef}
+                                    onChange={handleFileChange}
+                                    accept="image/*"
+                                    className="hidden"
+                                    disabled={isUploading}
+                                />
+
+                                {previewUrl ? (
+                                    <div className="relative z-10 flex flex-col items-center gap-4">
+                                        <div className="relative w-28 h-28 rounded-full overflow-hidden shadow-md border-4 border-white dark:border-gray-800">
+                                            <img
+                                                src={previewUrl}
+                                                alt="Preview"
+                                                className="w-full h-full object-cover"
+                                            />
+                                            <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <Upload className="w-6 h-6 text-white" />
+                                            </div>
+                                        </div>
+                                        <span className="text-xs font-bold text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
+                                            <Check className="w-4 h-4 text-emerald-500" /> Gambar siap diunggah
+                                        </span>
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-col items-center py-4">
+                                        <div className="w-14 h-14 bg-indigo-50 dark:bg-indigo-950/40 rounded-2xl flex items-center justify-center text-indigo-500 dark:text-indigo-400 mb-3 group-hover:scale-110 transition-transform">
+                                            <Upload className="w-6 h-6" />
+                                        </div>
+                                        <p className="text-sm font-bold text-gray-700 dark:text-gray-200">
+                                            Tarik & Lepas gambar di sini
+                                        </p>
+                                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                                            atau klik untuk menjelajah file komputer
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Notifications / Alerts */}
+                            <AnimatePresence mode="wait">
+                                {error && (
+                                    <motion.div
+                                        initial={{ opacity: 0, y: -10 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        exit={{ opacity: 0, y: -10 }}
+                                        className="p-4 bg-rose-50 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-900/30 rounded-xl text-xs font-bold text-rose-600 dark:text-rose-400 flex items-center gap-2"
+                                    >
+                                        <X className="w-4 h-4 shrink-0" />
+                                        <span>{error}</span>
+                                    </motion.div>
+                                )}
+
+                                {successMessage && (
+                                    <motion.div
+                                        initial={{ opacity: 0, y: -10 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        exit={{ opacity: 0, y: -10 }}
+                                        className="p-4 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/30 rounded-xl text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-2"
+                                    >
+                                        <Check className="w-4 h-4 shrink-0" />
+                                        <span>{successMessage}</span>
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
+
+                            <p className="text-[10px] text-gray-400 dark:text-gray-500 text-center font-bold uppercase tracking-wider">
+                                Rekomendasi: Gunakan foto persegi (1:1) • Max 2MB
+                            </p>
+                        </div>
+
+                        {/* Footer Buttons */}
+                        <div className="px-6 py-4 bg-gray-50 dark:bg-gray-800/50 border-t border-gray-100 dark:border-gray-700 flex gap-3">
+                            <button
+                                type="button"
+                                onClick={onClose}
+                                disabled={isUploading}
+                                className="flex-1 py-3 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 font-bold text-xs rounded-xl transition-all"
+                            >
+                                Batal
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleSave}
+                                disabled={isUploading || !photoBase64}
+                                className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:pointer-events-none"
+                            >
+                                {isUploading ? (
+                                    <>
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                        Mengunggah...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Check className="w-4 h-4" />
+                                        Simpan Foto
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </motion.div>
+                </div>
+            )}
+        </AnimatePresence>
+    );
+};

@@ -1,4 +1,4 @@
-export const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzDrmJ8WbMTy5RBKNdmBfMXIL0CKYT8xTteOqGolCPDoD8G5Ra65Yzh3N-sjLuKlRpg/exec';
+export const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzphzP7NCpZy5lpXZPgTr6EgEBTnKhaHGTHLGX4VQ_uvW27zKP7x52YkkpEjr0Ri0A3/exec';
 
 export const formatToDDMMYYYY = (dateStr: any) => {
     if (!dateStr || dateStr === '-') return '-';
@@ -25,23 +25,21 @@ export const getSavedPermissions = () => {
             if (parsed.daily_stats && parsed.daily_stats.edit) {
                 parsed.daily_stats.edit = ['Superadmin', 'Admin'];
             }
-            // Force hide user management from Staff
+            // Allow Staff to view User accounts so they can access profile photos and material posting
             if (parsed.users && parsed.users.view) {
-                parsed.users.view = ['Superadmin', 'Admin'];
+                parsed.users.view = ['Superadmin', 'Admin', 'Staff'];
             }
             return parsed;
         }
     } catch (e) {}
     return {
-        dashboard: { name: 'Dashboard', view: ['Superadmin', 'Admin', 'Staff'], edit: ['Superadmin', 'Admin'] },
-        performance: { name: 'Recruiter Performance', view: ['Superadmin', 'Admin', 'Staff'], edit: ['Superadmin', 'Admin'] },
-        goals: { name: 'Recruitment Goals', view: ['Superadmin', 'Admin', 'Staff'], edit: ['Superadmin', 'Admin'] },
-        channels: { name: 'Channel Performance', view: ['Superadmin', 'Admin', 'Staff'], edit: ['Superadmin', 'Admin'] },
-        daily_data: { name: 'Daily Data', view: ['Superadmin', 'Admin', 'Staff'], edit: ['Superadmin', 'Admin'] },
-        daily_stats: { name: 'Daily Stats', view: ['Superadmin', 'Admin', 'Staff'], edit: ['Superadmin', 'Admin'] },
-        payroll: { name: 'Payroll', view: ['Superadmin', 'Admin', 'Staff'], edit: ['Superadmin', 'Admin'] },
-        users: { name: 'User Accounts', view: ['Superadmin', 'Admin'], edit: ['Superadmin'] },
-        settings: { name: 'Settings', view: ['Superadmin'], edit: ['Superadmin'] }
+        dashboard: { name: 'Dashboard', view: ['Superadmin', 'Admin', 'Staff'], edit: ['Superadmin', 'Admin'], orderIndex: 1, icon: 'ph-squares-four', category: 'Overview' },
+        performance: { name: 'Performance', view: ['Superadmin', 'Admin', 'Staff'], edit: ['Superadmin', 'Admin'], orderIndex: 2, icon: 'ph-medal', category: 'Performance' },
+        daily_data: { name: 'Daily Data', view: ['Superadmin', 'Admin', 'Staff'], edit: ['Superadmin', 'Admin'], orderIndex: 3, icon: 'ph-address-book', category: 'Management' },
+        daily_stats: { name: 'Daily Stats', view: ['Superadmin', 'Admin', 'Staff'], edit: ['Superadmin', 'Admin'], orderIndex: 4, icon: 'ph-chart-bar', category: 'Management' },
+        payroll: { name: 'Payroll', view: ['Superadmin', 'Admin', 'Staff'], edit: ['Superadmin', 'Admin'], orderIndex: 5, icon: 'ph-currency-circle-dollar', category: 'Management' },
+        users: { name: 'User Accounts', view: ['Superadmin', 'Admin', 'Staff'], edit: ['Superadmin', 'Admin', 'Staff'], orderIndex: 6, icon: 'ph-user-gear', category: 'Management' },
+        settings: { name: 'Settings', view: ['Superadmin', 'Admin', 'Staff'], edit: ['Superadmin', 'Admin'], orderIndex: 7, icon: 'ph-gear', category: 'System' }
     };
 };
 

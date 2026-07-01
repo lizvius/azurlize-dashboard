@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { SCRIPT_URL, formatToDDMMYYYY, hasEditAccess } from '../utils';
+import { AvatarUpload } from './AvatarUpload';
 
 export const UserManagement = ({ authUser }: { authUser: any }) => {
     const [users, setUsers] = useState<any[]>([]);
@@ -8,6 +9,8 @@ export const UserManagement = ({ authUser }: { authUser: any }) => {
     const [modalMode, setModalMode] = useState<'add' | 'edit'>('add');
     const [isSubmitting, setIsSubmitting] = useState(false);
     
+    // No photo feed state variables
+
     // Search and filter states
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState<'Semua' | 'Aktif' | 'Pending' | 'Nonaktif'>('Semua');
@@ -17,6 +20,7 @@ export const UserManagement = ({ authUser }: { authUser: any }) => {
 
     // Toast Notification State
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+    const [isAvatarUploadOpen, setIsAvatarUploadOpen] = useState(false);
 
     // Custom Confirmation Dialog State
     const [confirmModal, setConfirmModal] = useState<{
@@ -41,7 +45,7 @@ export const UserManagement = ({ authUser }: { authUser: any }) => {
 
     const isSuperadmin = authUser && authUser.role === 'Superadmin';
     const isPrivileged = authUser && hasEditAccess('users', authUser.role);
-    const canEditDetail = selectedUserDetail ? (isSuperadmin || (isPrivileged && (selectedUserDetail.role === 'Staff' || selectedUserDetail.status === 'Pending') && selectedUserDetail.role !== 'Superadmin' && selectedUserDetail.role !== 'Admin')) : false;
+    const canEditDetail = selectedUserDetail ? (isSuperadmin || (selectedUserDetail.username === authUser?.username) || (isPrivileged && (selectedUserDetail.role === 'Staff' || selectedUserDetail.status === 'Pending') && selectedUserDetail.role !== 'Superadmin' && selectedUserDetail.role !== 'Admin')) : false;
     const canDeleteDetail = selectedUserDetail ? (isSuperadmin && authUser && selectedUserDetail.username !== authUser.username) : false;
 
     // Toast trigger helper
@@ -165,6 +169,8 @@ export const UserManagement = ({ authUser }: { authUser: any }) => {
         reader.readAsDataURL(file);
     };
 
+    // Removed legacy gallery functions
+
     // Fast Administrative Actions (Replace native confirm dialogues)
     const handleAcc = (user: any) => {
         const newRole = isSuperadmin ? (user.role || 'Staff') : 'Staff';
@@ -249,49 +255,17 @@ export const UserManagement = ({ authUser }: { authUser: any }) => {
         });
     };
 
-    const handleResetPassword = (user: any) => {
-        const defaultTempPass = '123456';
-        setConfirmModal({
-            isOpen: true,
-            title: 'Reset Password User',
-            message: `Apakah Anda yakin ingin mereset password untuk ${user.name || user.username} menjadi default: "${defaultTempPass}"? User disarankan segera menggantinya setelah login.`,
-            type: 'warning',
-            onConfirm: async () => {
-                setIsLoading(true);
-                try {
-                    const payload = { 
-                        action: 'updateUser', 
-                        oldUsername: user.username, 
-                        username: user.username, 
-                        name: user.name || '', 
-                        role: user.role, 
-                        status: user.status || 'Aktif', 
-                        password: defaultTempPass, 
-                        uid: user.uid || '' 
-                    };
-                    const response = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify(payload) });
-                    const result = await response.json();
-                    if (result.status === 'success') {
-                        showToast(`Password ${user.name} berhasil direset menjadi "${defaultTempPass}"!`, 'success');
-                        fetchUsers();
-                    } else {
-                        showToast(result.message, 'error');
-                    }
-                } catch (error) {
-                    showToast('Gagal mereset password. Silakan periksa koneksi internet.', 'error');
-                } finally {
-                    setIsLoading(false);
-                }
-            }
-        });
-    };
-
     const handleSubmit = async (e: any) => {
         e.preventDefault(); 
         setIsSubmitting(true); 
         const action = modalMode === 'add' ? 'addUser' : 'updateUser';
         try {
-            const payload = { action, ...formData }; 
+            const submittedFormData = { ...formData };
+            if (modalMode === 'add') {
+                submittedFormData.uid = String(10000000 + Math.floor(Math.random() * 90000000));
+                submittedFormData.password = '123456';
+            }
+            const payload = { action, ...submittedFormData }; 
             if (modalMode === 'edit') payload.oldUsername = originalUsername;
             
             const response = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify(payload) });
@@ -464,8 +438,8 @@ export const UserManagement = ({ authUser }: { authUser: any }) => {
                     const newlyJoined = isNewUser(u.tanggalBergabung); 
                     const activeState = getLastActiveInfo(u);
 
-                    // PRIVACY CONTROL: Admin/Superadmin OR owners see UID
-                    const canSeeUid = isPrivileged || (authUser && authUser.username === u.username);
+                    // PRIVACY CONTROL: Admin/Superadmin OR owners see UID (Disabled: UID is hidden)
+                    const canSeeUid = false;
 
                     return (
                         <div 
@@ -593,9 +567,9 @@ export const UserManagement = ({ authUser }: { authUser: any }) => {
                                                             <i className="ph-bold ph-pencil-simple text-sm"></i> Edit
                                                         </button>
                                                         
-                                                        {isSuperadmin && (
+                                                        {false && (
                                                             <button 
-                                                                onClick={() => handleResetPassword(u)} 
+                                                                onClick={() => undefined} 
                                                                 className="px-3.5 py-1.5 text-xs font-bold text-amber-600 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/20 dark:text-amber-400 dark:hover:bg-amber-900/30 rounded-xl transition-all flex items-center gap-1.5"
                                                                 title="Reset password ke default '123456'"
                                                             >
@@ -812,17 +786,37 @@ export const UserManagement = ({ authUser }: { authUser: any }) => {
                             
                             {/* Profile Card Header inside modal */}
                             <div className="flex flex-col sm:flex-row items-center gap-4 text-center sm:text-left bg-indigo-50/30 dark:bg-indigo-950/10 p-4 rounded-2xl border border-indigo-100/40 dark:border-indigo-950/30">
-                                {selectedUserDetail.photo || selectedUserDetail.photoUrl ? (
-                                    <img 
-                                        src={selectedUserDetail.photo || selectedUserDetail.photoUrl} 
-                                        alt={selectedUserDetail.name} 
-                                        className="w-20 h-20 rounded-2xl object-cover shadow-md border-4 border-white dark:border-gray-800" 
-                                    />
-                                ) : (
-                                    <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white font-black text-3xl flex items-center justify-center shadow-lg">
-                                        {selectedUserDetail.name?.charAt(0).toUpperCase()}
+                                <button 
+                                    type="button"
+                                    onClick={() => {
+                                        if (canEditDetail) {
+                                            setIsAvatarUploadOpen(true);
+                                        }
+                                    }}
+                                    disabled={!canEditDetail}
+                                    title={canEditDetail ? "Ganti Foto Profil" : undefined}
+                                    className={`relative shrink-0 group focus:outline-none ${canEditDetail ? 'cursor-pointer' : 'cursor-default'}`}
+                                >
+                                    <div className="w-20 h-20 rounded-2xl overflow-hidden relative shadow-md border-4 border-white dark:border-gray-800 transition-transform duration-300 group-hover:scale-105">
+                                        {selectedUserDetail.photo || selectedUserDetail.photoUrl ? (
+                                            <img 
+                                                src={selectedUserDetail.photo || selectedUserDetail.photoUrl} 
+                                                alt={selectedUserDetail.name} 
+                                                className="w-full h-full object-cover animate-fade-in" 
+                                            />
+                                        ) : (
+                                            <div className="w-full h-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white font-black text-3xl flex items-center justify-center">
+                                                {selectedUserDetail.name?.charAt(0).toUpperCase()}
+                                            </div>
+                                        )}
+                                        {canEditDetail && (
+                                            <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <i className="ph-bold ph-camera text-white text-lg mb-0.5 animate-bounce"></i>
+                                                <span className="text-white text-[8px] font-bold">Ganti Foto</span>
+                                            </div>
+                                        )}
                                     </div>
-                                )}
+                                </button>
                                 <div className="min-w-0 flex-1">
                                     <h2 className="text-xl font-black text-gray-900 dark:text-white leading-tight flex items-center justify-center sm:justify-start gap-2">
                                         {selectedUserDetail.name}
@@ -853,9 +847,9 @@ export const UserManagement = ({ authUser }: { authUser: any }) => {
                             {/* Metadata Grid */}
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="p-3.5 bg-gray-50/80 dark:bg-gray-900/30 border border-gray-100 dark:border-gray-800 rounded-xl text-center sm:text-left">
-                                    <span className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest block mb-0.5">ID Pengguna (UID)</span>
-                                    <span className="text-sm font-mono font-black text-gray-800 dark:text-gray-200 block truncate">
-                                        {selectedUserDetail.uid || '-'}
+                                    <span className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest block mb-0.5">Role / Jabatan</span>
+                                    <span className="text-sm font-black text-indigo-600 dark:text-indigo-400 block truncate">
+                                        {selectedUserDetail.role || '-'}
                                     </span>
                                 </div>
                                 <div className="p-3.5 bg-gray-50/80 dark:bg-gray-900/30 border border-gray-100 dark:border-gray-800 rounded-xl text-center sm:text-left">
@@ -904,28 +898,18 @@ export const UserManagement = ({ authUser }: { authUser: any }) => {
                                 Hubungi via Telegram (@{selectedUserDetail.username?.replace('@', '')})
                             </a>
 
-                            {/* Admin Commands inside detail popup */}
+                             {/* Admin Commands inside detail popup */}
                             {canEditDetail && (
                                 <div className="border-t border-gray-100 dark:border-gray-800 pt-5 space-y-3">
                                     <h4 className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest block">Command Center Administrator</h4>
                                     <div className="grid grid-cols-2 gap-2">
                                         <button 
                                             onClick={() => { setSelectedUserDetail(null); handleOpenEdit(selectedUserDetail); }}
-                                            className="py-2.5 bg-gray-100 hover:bg-indigo-50 dark:bg-gray-700/60 dark:hover:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5"
+                                            className="py-2.5 bg-gray-100 hover:bg-indigo-50 dark:bg-gray-700/60 dark:hover:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 col-span-2 sm:col-span-1"
                                         >
                                             <i className="ph-bold ph-pencil-simple text-sm"></i>
                                             Edit Profil
                                         </button>
-                                        
-                                        {isSuperadmin && (
-                                            <button 
-                                                onClick={() => handleResetPassword(selectedUserDetail)}
-                                                className="py-2.5 bg-gray-100 hover:bg-amber-50 dark:bg-gray-700/60 dark:hover:bg-amber-950/20 text-amber-600 dark:text-amber-400 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5"
-                                            >
-                                                <i className="ph-bold ph-key text-sm"></i>
-                                                Reset Password
-                                            </button>
-                                        )}
 
                                         <button 
                                             onClick={() => handleToggleSuspend(selectedUserDetail)}
@@ -1025,23 +1009,6 @@ export const UserManagement = ({ authUser }: { authUser: any }) => {
                                         <span className="text-[9px] sm:text-[10px] font-bold text-amber-500 mt-1.5 block flex items-center"><i className="ph-fill ph-warning mr-1"></i> Username dilock.</span>
                                     )}
                                 </div>
-                                
-                                <div>
-                                    <Label>UID</Label>
-                                    <div className="relative">
-                                        <i className="ph-bold ph-hash absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-lg"></i>
-                                        <input type="text" placeholder="Masukkan UID" required className={`${inputClass} pl-10`} value={formData.uid} onChange={e => setFormData({...formData, uid: e.target.value})} disabled={isSubmitting} />
-                                    </div>
-                                </div>
-                                
-                                <div>
-                                    <Label>Password {modalMode === 'edit' && <span className="text-gray-400 font-normal">(Opsional)</span>}</Label>
-                                    <div className="relative">
-                                        <i className="ph-bold ph-lock-key absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-lg"></i>
-                                        <input type="password" placeholder={modalMode === 'edit' ? 'Kosongkan jika tetap' : 'Buat password'} required={modalMode === 'add'} className={`${inputClass} pl-10`} value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} disabled={isSubmitting} />
-                                    </div>
-                                </div>
-                                
                                 <div>
                                     <Label>Pilih Role</Label>
                                     <div className="relative">
@@ -1153,6 +1120,40 @@ export const UserManagement = ({ authUser }: { authUser: any }) => {
                     </div>
                 </div>
             )}
+            {/* Avatar Upload Modal inside UserManagement */}
+            {selectedUserDetail && (
+                <AvatarUpload
+                    isOpen={isAvatarUploadOpen}
+                    onClose={() => setIsAvatarUploadOpen(false)}
+                    currentPhotoUrl={selectedUserDetail.photo || selectedUserDetail.photoUrl}
+                    username={selectedUserDetail.username}
+                    name={selectedUserDetail.name}
+                    onUploadSuccess={(newPhotoUrl) => {
+                        // Refresh the local user details
+                        setSelectedUserDetail({
+                            ...selectedUserDetail,
+                            photo: newPhotoUrl,
+                            photoUrl: newPhotoUrl
+                        });
+                        
+                        // If updating own profile, update session as well
+                        if (authUser && authUser.username === selectedUserDetail.username) {
+                            const updatedAuth = {
+                                ...authUser,
+                                photoUrl: newPhotoUrl,
+                                photo: newPhotoUrl
+                            };
+                            localStorage.setItem('recruitOps_session', JSON.stringify(updatedAuth));
+                            window.dispatchEvent(new Event('sessionUpdated'));
+                        }
+                        
+                        // Re-fetch users lists
+                        fetchUsers(false);
+                    }}
+                />
+            )}
+
+            {/* Removed legacy photo posting modal */}
         </div>
     );
 };
