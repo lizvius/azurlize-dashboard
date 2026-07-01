@@ -3,6 +3,13 @@ import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 
+import '@phosphor-icons/web/regular';
+import '@phosphor-icons/web/thin';
+import '@phosphor-icons/web/light';
+import '@phosphor-icons/web/bold';
+import '@phosphor-icons/web/fill';
+import '@phosphor-icons/web/duotone';
+
 // Global interceptor to handle non-JSON responses (e.g. text starting with emoji or error messages)
 const originalJson = Response.prototype.json;
 Response.prototype.json = async function() {

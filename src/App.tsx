@@ -43,8 +43,9 @@ export default function App() {
                 });
                 const result = await response.json();
                 if (result.status === 'success' && result.data && Object.keys(result.data).length > 0) {
-                    localStorage.setItem('recruitOps_permissions_v2', JSON.stringify(result.data));
-                    setPermissions(result.data);
+                    let parsed = result.data;
+                    localStorage.setItem('recruitOps_permissions_v2', JSON.stringify(parsed));
+                    setPermissions(parsed);
                 }
             } catch (error) {
                 console.error("Gagal memuat permissions dari database:", error);
