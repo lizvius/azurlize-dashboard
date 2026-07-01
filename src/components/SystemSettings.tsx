@@ -81,9 +81,13 @@ export const SystemSettings = ({ authUser }: { authUser?: any }) => {
     const [perms, setPerms] = useState<any>({});
     const [isPermsLoading, setIsPermsLoading] = useState(true);
     const [isSavingPerms, setIsSavingPerms] = useState(false);
+    const [activeTab, setActiveTab] = useState<'permissions' | 'landing' | 'tutorial'>('permissions');
 
     // Load page permissions on mount
     useEffect(() => {
+        if (authUser?.role !== 'Superadmin') {
+            setActiveTab('landing');
+        }
         let isMounted = true;
         const fetchPerms = async () => {
             setIsPermsLoading(true);
@@ -562,8 +566,38 @@ export const SystemSettings = ({ authUser }: { authUser?: any }) => {
                 )}
             </div>
 
-            {isSuperadmin && (
-                <div className="bg-white dark:bg-gray-800 p-6 sm:p-8 rounded-3xl border border-gray-200 dark:border-gray-700 shadow-sm space-y-6">
+            {/* Custom Tabs Navigation */}
+            <div className="flex overflow-x-auto hide-scrollbar gap-2 sm:gap-4 border-b border-gray-200 dark:border-gray-700 pb-px">
+                {isSuperadmin && (
+                    <button
+                        onClick={() => setActiveTab('permissions')}
+                        className={`px-4 py-3 text-sm font-black whitespace-nowrap border-b-2 transition-colors ${
+                            activeTab === 'permissions' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                        }`}
+                    >
+                        <i className="ph-bold ph-shield-check mr-2"></i> Hak Akses & Tata Letak
+                    </button>
+                )}
+                <button
+                    onClick={() => setActiveTab('landing')}
+                    className={`px-4 py-3 text-sm font-black whitespace-nowrap border-b-2 transition-colors ${
+                        activeTab === 'landing' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                    }`}
+                >
+                    <i className="ph-bold ph-paint-brush-broad mr-2"></i> Landing Page
+                </button>
+                <button
+                    onClick={() => setActiveTab('tutorial')}
+                    className={`px-4 py-3 text-sm font-black whitespace-nowrap border-b-2 transition-colors ${
+                        activeTab === 'tutorial' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                    }`}
+                >
+                    <i className="ph-bold ph-book-open mr-2"></i> Tutorial Perekrut
+                </button>
+            </div>
+
+            {activeTab === 'permissions' && isSuperadmin && (
+                <div className="bg-white dark:bg-gray-800 p-6 sm:p-8 rounded-3xl border border-gray-200 dark:border-gray-700 shadow-sm space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-gray-100 dark:border-gray-700 pb-4 gap-4">
                         <div>
                             <h3 className="font-black text-lg text-gray-900 dark:text-white flex items-center">
@@ -596,8 +630,8 @@ export const SystemSettings = ({ authUser }: { authUser?: any }) => {
                             <p className="text-xs font-black text-gray-400 uppercase tracking-wider">Memuat konfigurasi hak akses...</p>
                         </div>
                     ) : (
-                        <div className="overflow-x-auto rounded-2xl border border-gray-100 dark:border-gray-700/60 bg-gray-50/50 dark:bg-gray-900/10">
-                            <table className="w-full text-left border-collapse text-xs">
+                        <div className="overflow-x-auto rounded-2xl border border-gray-100 dark:border-gray-700/60 bg-gray-50/50 dark:bg-gray-900/10 custom-scrollbar">
+                            <table className="w-full text-left border-collapse text-xs min-w-[800px]">
                                 <thead>
                                     <tr className="border-b border-gray-100 dark:border-gray-700 text-[10px] font-black text-gray-400 uppercase tracking-wider bg-gray-50 dark:bg-gray-900/40">
                                         <th className="py-3 px-4 text-center w-24">Urutan</th>
@@ -786,36 +820,31 @@ export const SystemSettings = ({ authUser }: { authUser?: any }) => {
                 </div>
             )}
 
-            {/* TWO-COLUMN GRID LAYOUT (Responsive for laptop/tablet/mobile) */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 items-start">
-                
-                {/* LEFT SIDE: Landing Page Editor & Tutorial Form (7 cols) */}
-                <div className="lg:col-span-7 space-y-6 sm:space-y-8">
-                    
-                    {/* CARD 1: KUSTOMISASI LANDING PAGE (NEW) */}
-                    <div className="bg-white dark:bg-gray-800 p-6 sm:p-8 rounded-3xl border border-gray-200 dark:border-gray-700 shadow-sm">
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-gray-100 dark:border-gray-700 pb-4 mb-6 gap-2">
-                            <h3 className="font-black text-lg text-gray-900 dark:text-white flex items-center">
-                                <i className="ph-bold ph-paint-brush-broad mr-3 text-indigo-500 text-2xl"></i> Kustomisasi Konten Landing Page
-                            </h3>
-                            <button
-                                type="button"
-                                onClick={handleSaveLandingConfig}
-                                disabled={isSavingConfig}
-                                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl text-xs uppercase tracking-wider transition-all shadow-md active:scale-95 disabled:opacity-50"
-                            >
-                                {isSavingConfig ? 'Menyimpan...' : 'Simpan Konten'}
-                            </button>
-                        </div>
-
-                        {isConfigLoading ? (
-                            <div className="flex flex-col items-center justify-center py-8 text-center text-gray-500">
-                                <i className="ph-bold ph-spinner ph-spin text-2xl text-indigo-500 mb-2"></i>
-                                <p className="text-xs font-bold text-gray-400">Memuat konfigurasi landing page...</p>
+            {/* TAB CONTENT: LANDING PAGE */}
+            {activeTab === 'landing' && (
+                <div className="bg-white dark:bg-gray-800 p-6 sm:p-8 rounded-3xl border border-gray-200 dark:border-gray-700 shadow-sm animate-in fade-in slide-in-from-bottom-4 duration-300">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-gray-100 dark:border-gray-700 pb-4 mb-6 gap-2">
+                                <h3 className="font-black text-lg text-gray-900 dark:text-white flex items-center">
+                                    <i className="ph-bold ph-paint-brush-broad mr-3 text-indigo-500 text-2xl"></i> Kustomisasi Konten Landing Page
+                                </h3>
+                                <button
+                                    type="button"
+                                    onClick={handleSaveLandingConfig}
+                                    disabled={isSavingConfig}
+                                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl text-xs uppercase tracking-wider transition-all shadow-md active:scale-95 disabled:opacity-50"
+                                >
+                                    {isSavingConfig ? 'Menyimpan...' : 'Simpan Konten'}
+                                </button>
                             </div>
-                        ) : (
-                            <div className="space-y-5">
-                                {/* SECTION 1: HERO */}
+
+                            {isConfigLoading ? (
+                                <div className="flex flex-col items-center justify-center py-8 text-center text-gray-500">
+                                    <i className="ph-bold ph-spinner ph-spin text-2xl text-indigo-500 mb-2"></i>
+                                    <p className="text-xs font-bold text-gray-400">Memuat konfigurasi landing page...</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-5">
+                                    {/* SECTION 1: HERO */}
                                 <div className="space-y-4">
                                     <h4 className="text-xs font-black text-indigo-500 uppercase tracking-widest border-l-2 border-indigo-500 pl-2">Bagian Hero Atas</h4>
                                     
@@ -986,10 +1015,15 @@ export const SystemSettings = ({ authUser }: { authUser?: any }) => {
                             </div>
                         )}
                     </div>
+                )}
 
                     {/* CARD 3: EDIT TUTORIAL STEPS FORM */}
-                    {isSuperadmin && (
-                        <div className="bg-white dark:bg-gray-800 p-6 sm:p-8 rounded-3xl border border-gray-200 dark:border-gray-700 shadow-sm">
+            {activeTab === 'tutorial' && (
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 items-start animate-in fade-in slide-in-from-bottom-4 duration-300">
+                    {/* LEFT SIDE: Tutorial Form (7 cols) */}
+                    <div className="lg:col-span-7 space-y-6 sm:space-y-8">
+                        {isSuperadmin && (
+                            <div className="bg-white dark:bg-gray-800 p-6 sm:p-8 rounded-3xl border border-gray-200 dark:border-gray-700 shadow-sm">
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-gray-100 dark:border-gray-700 pb-4 mb-6 gap-2">
                                 <h3 className="font-black text-lg text-gray-900 dark:text-white flex items-center">
                                     <i className="ph-bold ph-pencil-simple mr-3 text-emerald-500 text-2xl"></i> 
@@ -1361,8 +1395,9 @@ export const SystemSettings = ({ authUser }: { authUser?: any }) => {
                     </div>
 
                 </div>
-
-            </div>
+                </div>
+            )}
+            
             {/* Custom confirmation and alert modals */}
             <CustomDialog 
                 isOpen={dialogOpen}

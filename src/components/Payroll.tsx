@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Card, Badge, ProgressBar } from './UI';
-import { SCRIPT_URL, formatToDDMMYYYY, hasEditAccess } from '../utils';
+import { SCRIPT_URL, formatToDDMMYYYY, hasEditAccess, formatCurrency } from '../utils';
 
 export const Payroll = ({ authUser }) => {
     const [data, setData] = useState([]);
@@ -287,8 +287,6 @@ export const Payroll = ({ authUser }) => {
             }
         }
     }, [formData.t3, formData.sebenarnyaV0, formData.sebenarnyaT0, formData.deklarasiV0, isModalOpen]);
-
-    const formatCurrency = (amount) => `Rp ${(Number(amount) || 0).toLocaleString('id-ID')}`;
     
     const calculatePayrollMetrix = (input) => {
         const aktif = Number(input.sebenarnyaT0) || 0;
@@ -376,7 +374,6 @@ export const Payroll = ({ authUser }) => {
 
     const handleSharePayroll = (d) => {
         const totalBonus = (Number(d.komisi)||0) + (Number(d.bonusT0)||0) + (Number(d.bonusT3)||0) + (Number(d.otherBonus)||0);
-        const formatMoney = (amount) => `Rp ${(Number(amount) || 0).toLocaleString('id-ID')}`;
         
         const message = `*SLIP GAJI DIGITAL - RECRUITOPS*
 ---------------------------------------
@@ -394,15 +391,15 @@ export const Payroll = ({ authUser }) => {
 • Level Gaji: LVL ${d.levelGaji || 0}
 ---------------------------------------
 💵 *Rincian Pendapatan:*
-• Gaji Pokok: ${formatMoney(d.gajiPokok)}
-• Komisi: ${formatMoney(d.komisi)}
-• Bonus T0: ${formatMoney(d.bonusT0)}
-• Bonus T3: ${formatMoney(d.bonusT3)}
-• Bonus Lainnya: ${formatMoney(d.otherBonus)}
-• Potongan/Deduksi: -${formatMoney(d.deduksi)}
+• Gaji Pokok: ${formatCurrency(d.gajiPokok)}
+• Komisi: ${formatCurrency(d.komisi)}
+• Bonus T0: ${formatCurrency(d.bonusT0)}
+• Bonus T3: ${formatCurrency(d.bonusT3)}
+• Bonus Lainnya: ${formatCurrency(d.otherBonus)}
+• Potongan/Deduksi: -${formatCurrency(d.deduksi)}
 ---------------------------------------
 🔥 *TOTAL TAKE HOME PAY:*
-👉 *${formatMoney(d.totalGaji)}*
+👉 *${formatCurrency(d.totalGaji)}*
 ---------------------------------------
 Status: ✅ ${d.status || 'Draft'}
 

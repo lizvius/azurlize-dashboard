@@ -5,7 +5,7 @@ import { SCRIPT_URL } from '../utils';
 export const Login = ({ onLogin, onBack, isDark, onToggleDark }: any) => {
     const [isLoading, setIsLoading] = useState(false);
     const [errorMsg, setErrorMsg] = useState('');
-    const [formData, setFormData] = useState({ username: '' });
+    const [formData, setFormData] = useState({ username: '', uid: '' });
 
     const handleSubmit = async (e: any) => {
         e.preventDefault(); 
@@ -20,20 +20,23 @@ export const Login = ({ onLogin, onBack, isDark, onToggleDark }: any) => {
             
             if (result.status === 'success' && Array.isArray(result.data)) {
                 const cleanInputUsername = formData.username.trim().toLowerCase();
+                const cleanInputUid = formData.uid.trim();
                 
                 const inputWithAt = cleanInputUsername.startsWith('@') ? cleanInputUsername : '@' + cleanInputUsername;
                 const inputWithoutAt = cleanInputUsername.startsWith('@') ? cleanInputUsername.slice(1) : cleanInputUsername;
 
                 const matchedUser = result.data.find((u: any) => {
                     const dbUsername = String(u.username || '').trim().toLowerCase();
+                    const dbUid = String(u.uid || '').trim();
                     const dbUsernameWithAt = dbUsername.startsWith('@') ? dbUsername : '@' + dbUsername;
                     const dbUsernameWithoutAt = dbUsername.startsWith('@') ? dbUsername.slice(1) : dbUsername;
                     
                     const usernameMatches = (dbUsername === cleanInputUsername) || 
                                              (dbUsernameWithAt === inputWithAt) || 
                                              (dbUsernameWithoutAt === inputWithoutAt);
+                    const uidMatches = dbUid === cleanInputUid;
                                              
-                    return usernameMatches;
+                    return usernameMatches && uidMatches;
                 });
 
                 if (matchedUser) {
@@ -55,7 +58,8 @@ export const Login = ({ onLogin, onBack, isDark, onToggleDark }: any) => {
                 method: 'POST', 
                 body: JSON.stringify({ 
                     action: 'login', 
-                    username: cleanUsername
+                    username: cleanUsername,
+                    uid: formData.uid.trim()
                 }) 
             });
             const fallbackResult = await fallbackResponse.json();
@@ -63,7 +67,7 @@ export const Login = ({ onLogin, onBack, isDark, onToggleDark }: any) => {
                 const userObj = fallbackResult.user || fallbackResult.data;
                 onLogin(userObj);
             } else {
-                setErrorMsg('Username tidak terdaftar atau salah.');
+                setErrorMsg('Username atau UID tidak terdaftar atau salah.');
             }
         } catch (error) { 
             setErrorMsg('Terjadi kesalahan koneksi.'); 
@@ -131,7 +135,19 @@ export const Login = ({ onLogin, onBack, isDark, onToggleDark }: any) => {
                                 type="text" 
                                 placeholder="Username Telegram (contoh: @username)" 
                                 value={formData.username} 
-                                onChange={e => setFormData({ username: e.target.value })} 
+                                onChange={e => setFormData({ ...formData, username: e.target.value })} 
+                                className={inputClass} 
+                                disabled={isLoading} 
+                                required 
+                            />
+                        </div>
+                        <div className="relative">
+                            <i className="ph-bold ph-identification-card absolute left-3 top-1/2 -translate-y-1/2 text-xl text-gray-400"></i>
+                            <input 
+                                type="text" 
+                                placeholder="UID Karyawan" 
+                                value={formData.uid} 
+                                onChange={e => setFormData({ ...formData, uid: e.target.value })} 
                                 className={inputClass} 
                                 disabled={isLoading} 
                                 required 

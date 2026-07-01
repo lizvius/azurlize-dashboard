@@ -324,15 +324,6 @@ export const UserManagement = ({ authUser }: { authUser: any }) => {
         });
     };
 
-    const formatDate = (dateStr: any) => {
-        if (!dateStr || dateStr === '-') return '-';
-        try {
-            const d = new Date(dateStr);
-            if (isNaN(d.getTime())) return dateStr.split('T')[0];
-            return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
-        } catch(e) { return '-'; }
-    };
-
     const isNewUser = (dateStr: any) => {
         if (!dateStr || dateStr === '-') return false;
         try {
@@ -548,7 +539,7 @@ export const UserManagement = ({ authUser }: { authUser: any }) => {
                                                 )}
                                                 <div className="flex items-center gap-2">
                                                     <span className="w-16 text-gray-400 flex items-center gap-1 shrink-0"><i className="ph-bold ph-calendar-blank"></i> Gabung:</span>
-                                                    <span className="font-bold text-gray-900 dark:text-white">{formatDate(u.tanggalBergabung)}</span>
+                                                    <span className="font-bold text-gray-900 dark:text-white">{formatToDDMMYYYY(u.tanggalBergabung)}</span>
                                                 </div>
                                             </div>
                                         </div>
@@ -855,7 +846,7 @@ export const UserManagement = ({ authUser }: { authUser: any }) => {
                                 <div className="p-3.5 bg-gray-50/80 dark:bg-gray-900/30 border border-gray-100 dark:border-gray-800 rounded-xl text-center sm:text-left">
                                     <span className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest block mb-0.5">Tanggal Bergabung</span>
                                     <span className="text-sm font-bold text-gray-800 dark:text-gray-200 block">
-                                        {formatDate(selectedUserDetail.tanggalBergabung)}
+                                        {formatToDDMMYYYY(selectedUserDetail.tanggalBergabung)}
                                     </span>
                                 </div>
                             </div>

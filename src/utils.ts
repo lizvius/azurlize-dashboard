@@ -13,6 +13,39 @@ export const formatToDDMMYYYY = (dateStr: any) => {
     }
 };
 
+export const formatCurrency = (amount: number | string | undefined | null) => `Rp ${(Number(amount) || 0).toLocaleString('id-ID')}`;
+
+export const getOffsetMondayStr = (offsetWeeks = 0) => {
+    const d = new Date();
+    const day = d.getDay() || 7; 
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() - day + 1 + (offsetWeeks * 7));
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+export const getSundayStr = (mondayStr: string) => {
+    if (!mondayStr) return '';
+    const d = new Date(mondayStr);
+    if (isNaN(d.getTime())) return '';
+    d.setDate(d.getDate() + 6);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+export const getPayrollDateOfMonday = (mondayStr: string) => {
+    if (!mondayStr) return '';
+    const d = new Date(mondayStr);
+    if (isNaN(d.getTime())) return '';
+    d.setDate(d.getDate() + 9);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+export const getWeekId = (dateStr: string) => {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return '';
+    return `${d.getFullYear()}-W${String(Math.ceil((((d.getTime() - new Date(d.getFullYear(), 0, 1).getTime()) / 86400000) + new Date(d.getFullYear(), 0, 1).getDay() + 1) / 7)).padStart(2, '0')}`;
+};
+
 export const getSavedPermissions = () => {
     try {
         const saved = localStorage.getItem('recruitOps_permissions_v2');

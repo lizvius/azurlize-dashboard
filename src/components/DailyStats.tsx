@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Card, Badge, ProgressBar } from './UI';
-import { SCRIPT_URL, formatToDDMMYYYY, hasEditAccess } from '../utils';
+import { SCRIPT_URL, formatToDDMMYYYY, hasEditAccess, formatCurrency } from '../utils';
 
 export const DailyStats = ({ authUser }) => {
     // -------------------------------------------------------------
@@ -481,7 +481,7 @@ export const DailyStats = ({ authUser }) => {
                 </div>
                 <div className="flex flex-col items-end gap-1.5">
                     {s.denda > 0 ? (
-                        <span className="text-[10px] font-black text-rose-600 bg-rose-50 dark:bg-rose-900/20 px-2 py-1 rounded shadow-sm border border-rose-100 dark:border-rose-800/50">Denda: Rp {(s.denda).toLocaleString('id-ID')}</span>
+                        <span className="text-[10px] font-black text-rose-600 bg-rose-50 dark:bg-rose-900/20 px-2 py-1 rounded shadow-sm border border-rose-100 dark:border-rose-800/50">Denda: {formatCurrency(s.denda)}</span>
                     ) : (
                         <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 px-2 py-1 rounded shadow-sm border border-emerald-100 dark:border-emerald-800/50">Bebas Denda</span>
                     )}
@@ -628,7 +628,7 @@ export const DailyStats = ({ authUser }) => {
                     { l:'Pengujian', v: totalWeekly.pengujian, i:'ph-exam', c:'amber', grad:'from-amber-400 to-orange-500' }, 
                     { l:'T0 (Acc)', v: totalWeekly.t0, i:'ph-check-circle', c:'emerald', grad:'from-emerald-400 to-teal-500' }, 
                     { l:'V0 (VIP)', v: totalWeekly.v0, i:'ph-star', c:'purple', grad:'from-purple-400 to-fuchsia-500' }, 
-                    { l:'Denda', v: `Rp ${(totalWeekly.denda).toLocaleString('id-ID')}`, i:'ph-warning-circle', c:'rose', grad:'from-rose-400 to-red-500' } 
+                    { l:'Denda', v: formatCurrency(totalWeekly.denda), i:'ph-warning-circle', c:'rose', grad:'from-rose-400 to-red-500' } 
                 ].map((k,idx)=>(
                     <div key={idx} className="relative group overflow-hidden bg-white/90 dark:bg-gray-800/90 backdrop-blur-xl border border-gray-200/60 dark:border-gray-700/60 rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
                         {isLoading && <div className="absolute inset-0 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm z-20 flex justify-center items-center"><i className={`ph-bold ph-spinner ph-spin text-2xl text-${k.c}-500`}></i></div>}
@@ -953,7 +953,7 @@ export const DailyStats = ({ authUser }) => {
                                                 <td className="px-4 py-4 text-center font-black text-emerald-600 dark:text-emerald-400 border-l border-gray-100 dark:border-gray-700/50 bg-emerald-50/30 dark:bg-emerald-900/10">{s.t0}</td><td className="px-4 py-4 text-center font-black text-purple-600 dark:text-purple-400 border-l border-gray-100 dark:border-gray-700/50 bg-purple-50/50 dark:bg-purple-900/20">{s.v0}</td>
                                                 <td className="px-5 py-4 text-center font-black text-indigo-600 dark:text-indigo-400 border-l border-gray-100 dark:border-gray-700/50 text-base sm:text-lg bg-indigo-50/50 dark:bg-indigo-900/20 shadow-[inset_4px_0_0_rgba(79,70,229,0.5)]">{s.totalHarian}</td>
                                                 <td className="px-4 py-4 text-center font-black border-l border-gray-100 dark:border-gray-700/50">{s.missCount > 0 ? <span className="text-rose-600 dark:text-rose-400">{s.missCount} Hari</span> : <span className="text-gray-300 dark:text-gray-600">-</span>}</td>
-                                                <td className="px-5 py-4 text-right font-black border-l border-gray-100 dark:border-gray-700/50">{s.denda > 0 ? <span className="text-rose-600 bg-rose-50 border border-rose-200 dark:bg-rose-900/30 dark:border-rose-800/50 px-2.5 py-1 rounded-md shadow-sm">Rp {(s.denda).toLocaleString('id-ID')}</span> : <span className="text-emerald-500 px-2.5 py-1 bg-emerald-50 dark:bg-emerald-900/20 rounded-md">Rp 0</span>}</td>
+                                                <td className="px-5 py-4 text-right font-black border-l border-gray-100 dark:border-gray-700/50">{s.denda > 0 ? <span className="text-rose-600 bg-rose-50 border border-rose-200 dark:bg-rose-900/30 dark:border-rose-800/50 px-2.5 py-1 rounded-md shadow-sm">{formatCurrency(s.denda)}</span> : <span className="text-emerald-500 px-2.5 py-1 bg-emerald-50 dark:bg-emerald-900/20 rounded-md">Rp 0</span>}</td>
                                                 <td className="px-5 py-4 text-center font-black border-l border-gray-100 dark:border-gray-700/50">{s.dapatBonus ? <span className="bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50 px-2.5 py-1 rounded-md text-[10px] shadow-sm uppercase tracking-widest flex items-center justify-center w-max mx-auto"><i className="ph-fill ph-star mr-1.5"></i> Cair</span> : <span className="text-gray-300 dark:text-gray-600">-</span>}</td>
                                             </tr>
                                          ))}
@@ -999,7 +999,7 @@ export const DailyStats = ({ authUser }) => {
                                                 <td className="px-4 py-4 text-center font-black text-emerald-600 dark:text-emerald-400 border-l border-gray-100 dark:border-gray-700/50 bg-emerald-50/30 dark:bg-emerald-900/10">{s.t0}</td><td className="px-4 py-4 text-center font-black text-purple-600 dark:text-purple-400 border-l border-gray-100 dark:border-gray-700/50 bg-purple-50/50 dark:bg-purple-900/20">{s.v0}</td>
                                                 <td className="px-5 py-4 text-center font-black text-indigo-600 dark:text-indigo-400 border-l border-gray-100 dark:border-gray-700/50 text-base sm:text-lg bg-indigo-50/50 dark:bg-indigo-900/20 shadow-[inset_4px_0_0_rgba(79,70,229,0.5)]">{s.totalHarian}</td>
                                                 <td className="px-4 py-4 text-center font-black border-l border-gray-100 dark:border-gray-700/50">{s.missCount > 0 ? <span className="text-rose-600 dark:text-rose-400">{s.missCount} Hari</span> : <span className="text-gray-300 dark:text-gray-600">-</span>}</td>
-                                                <td className="px-5 py-4 text-right font-black border-l border-gray-100 dark:border-gray-700/50">{s.denda > 0 ? <span className="text-rose-600 bg-rose-50 border border-rose-200 dark:bg-rose-900/30 dark:border-rose-800/50 px-2.5 py-1 rounded-md shadow-sm">Rp {(s.denda).toLocaleString('id-ID')}</span> : <span className="text-emerald-500 px-2.5 py-1 bg-emerald-50 dark:bg-emerald-900/20 rounded-md">Rp 0</span>}</td>
+                                                <td className="px-5 py-4 text-right font-black border-l border-gray-100 dark:border-gray-700/50">{s.denda > 0 ? <span className="text-rose-600 bg-rose-50 border border-rose-200 dark:bg-rose-900/30 dark:border-rose-800/50 px-2.5 py-1 rounded-md shadow-sm">{formatCurrency(s.denda)}</span> : <span className="text-emerald-500 px-2.5 py-1 bg-emerald-50 dark:bg-emerald-900/20 rounded-md">Rp 0</span>}</td>
                                                 <td className="px-5 py-4 text-center font-black border-l border-gray-100 dark:border-gray-700/50">{s.dapatBonus ? <span className="bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50 px-2.5 py-1 rounded-md text-[10px] shadow-sm uppercase tracking-widest flex items-center justify-center w-max mx-auto"><i className="ph-fill ph-star mr-1.5"></i> Cair</span> : <span className="text-gray-300 dark:text-gray-600">-</span>}</td>
                                             </tr>
                                          ))}
@@ -1212,7 +1212,7 @@ export const DailyStats = ({ authUser }) => {
                                         <div className="flex-1 p-4 sm:p-5 text-center bg-indigo-100/50 dark:bg-indigo-900/50 relative"><div className="absolute top-0 left-0 w-full h-1 bg-indigo-400"></div><div className="text-[10px] font-black text-indigo-600 dark:text-indigo-300 uppercase tracking-widest mb-1.5">Total Diterima</div><div className="text-3xl font-black text-indigo-700 dark:text-indigo-400 drop-shadow-sm">{formData.username ? activeFormStats.totalHarian : '-'}</div></div>
                                         <div className="flex-[1.5] p-4 sm:p-5 text-center flex flex-col justify-center items-center bg-white/80 dark:bg-gray-800/80">
                                             <div className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2">Evaluasi Denda</div>
-                                            {formData.username ? (evalForm.denda > 0 ? <span className="bg-rose-500 text-white text-xs sm:text-sm px-4 py-1.5 rounded-full font-black shadow-lg shadow-rose-500/40 animate-pulse border-2 border-rose-400">Kena Rp {(evalForm.denda).toLocaleString('id-ID')}</span> : <span className="bg-emerald-500 text-white text-xs sm:text-sm px-4 py-1.5 rounded-full font-black shadow-lg shadow-emerald-500/40 border-2 border-emerald-400 flex items-center"><i className="ph-bold ph-check-circle mr-1"></i> Aman (Bebas)</span>) : <span className="text-gray-300 dark:text-gray-600 text-sm font-bold bg-gray-100 dark:bg-gray-900 px-4 py-1.5 rounded-full border border-gray-200 dark:border-gray-700">Pilih Staf Dahulu</span>}
+                                            {formData.username ? (evalForm.denda > 0 ? <span className="bg-rose-500 text-white text-xs sm:text-sm px-4 py-1.5 rounded-full font-black shadow-lg shadow-rose-500/40 animate-pulse border-2 border-rose-400">Kena {formatCurrency(evalForm.denda)}</span> : <span className="bg-emerald-500 text-white text-xs sm:text-sm px-4 py-1.5 rounded-full font-black shadow-lg shadow-emerald-500/40 border-2 border-emerald-400 flex items-center"><i className="ph-bold ph-check-circle mr-1"></i> Aman (Bebas)</span>) : <span className="text-gray-300 dark:text-gray-600 text-sm font-bold bg-gray-100 dark:bg-gray-900 px-4 py-1.5 rounded-full border border-gray-200 dark:border-gray-700">Pilih Staf Dahulu</span>}
                                         </div>
                                     </div>
                                 </div>
