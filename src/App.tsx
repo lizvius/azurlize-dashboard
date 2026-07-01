@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Login } from './components/Auth';
 import { LandingPage } from './components/LandingPage';
+import { TutorialPage } from './components/TutorialPage';
 import { ExecutiveDashboard } from './components/ExecutiveDashboard';
 import { Performance } from './components/Performance';
 import { DailyData } from './components/DailyData';
@@ -26,7 +27,7 @@ export default function App() {
     const [activeTab, setActiveTab] = useState('dashboard');
     const [isSidebarOpen, setSidebarOpen] = useState(false);
     const [isDark, setIsDark] = useState(() => localStorage.getItem('recruitOps_theme') === 'dark');
-    const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
+    const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
     const [isCheckingSession, setIsCheckingSession] = useState(true);
     const [lastSynced, setLastSynced] = useState<Date>(new Date());
     const [isSyncingGlobal, setIsSyncingGlobal] = useState(false);
@@ -194,7 +195,7 @@ export default function App() {
     }, []);
 
     useEffect(() => {
-        const handleResize = () => setIsMobile(window.innerWidth < 1024);
+        const handleResize = () => setIsMobile(window.innerWidth < 768);
         window.addEventListener('resize', handleResize);
         setTimeout(() => setIsCheckingSession(false), 300);
         return () => window.removeEventListener('resize', handleResize);
@@ -297,8 +298,20 @@ export default function App() {
                 <div className={isDark ? 'dark' : ''}>
                     <LandingPage 
                         onEnterLogin={() => setAuthView('login')}
+                        onEnterTutorial={() => setAuthView('tutorial')}
                         isDark={isDark}
                         onToggleDark={() => setIsDark(!isDark)}
+                    />
+                </div>
+            );
+        }
+        
+        if (authView === 'tutorial') {
+            return (
+                <div className={isDark ? 'dark' : ''}>
+                    <TutorialPage 
+                        onBack={() => setAuthView('landing')}
+                        isDark={isDark}
                     />
                 </div>
             );
@@ -590,7 +603,7 @@ export default function App() {
                 </AnimatePresence>
             
                 {/* MODERN SIDEBAR (Desktop & Laptop) */}
-                <aside className="hidden lg:flex static inset-y-0 left-0 z-50 w-72 bg-white/80 dark:bg-[#111827]/80 backdrop-blur-2xl border-r border-gray-200/50 dark:border-gray-800/50 flex-col shadow-none">
+                <aside className="hidden md:flex static inset-y-0 left-0 z-50 w-72 bg-white/80 dark:bg-[#111827]/80 backdrop-blur-2xl border-r border-gray-200/50 dark:border-gray-800/50 flex-col shadow-none">
                     
                     {/* Header Logo Sidebar */}
                     <div className="h-20 flex items-center px-6 border-b border-gray-200/50 dark:border-gray-800/50 shrink-0">
@@ -688,7 +701,7 @@ export default function App() {
                     </div>
                 </aside>
 
-                <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative pb-24 lg:pb-0">
+                <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative pb-24 md:pb-0">
                     {/* Modern Top Header */}
                     <header className="bg-white/70 dark:bg-[#0B0F19]/70 backdrop-blur-xl border-b border-gray-200/50 dark:border-gray-800/50 flex items-center justify-between px-4 sm:px-5 md:px-6 lg:px-10 z-10 shrink-0 sticky top-0 h-[calc(5rem+env(safe-area-inset-top))] pt-[env(safe-area-inset-top)]">
                         <div className="flex items-center min-w-0 flex-1 mr-3 sm:mr-6">
