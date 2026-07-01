@@ -9,7 +9,6 @@ export const DailyStats = ({ authUser }) => {
     const [users, setUsers] = useState([]);
     const [dailyCandidates, setDailyCandidates] = useState([]);
     const [perfData, setPerfData] = useState([]);
-    const [lockedDates, setLockedDates] = useState([]); // STATE BARU: Simpan tanggal yang di-lock admin
     const [isLoading, setIsLoading] = useState(false);
     
     const [activeTab, setActiveTab] = useState('input');
@@ -26,6 +25,7 @@ export const DailyStats = ({ authUser }) => {
     const [riwayatBulan, setRiwayatBulan] = useState(() => new Date().toISOString().slice(0, 7));
     const [riwayatUsername, setRiwayatUsername] = useState('');
 
+    // STATE BARU: Untuk membuka/menutup daftar staf yang sudah lapor
     const [showSelesaiInput, setShowSelesaiInput] = useState(false);
 
     const [pageSesuaiTarget, setPageSesuaiTarget] = useState(1);
@@ -156,7 +156,7 @@ export const DailyStats = ({ authUser }) => {
     };
 
     // -------------------------------------------------------------
-    // DATA FETCHING & LOCK TOGGLE
+    // DATA FETCHING
     // -------------------------------------------------------------
     const fetchData = async (showLoading = false) => {
         if (showLoading) setIsLoading(true);
@@ -170,7 +170,6 @@ export const DailyStats = ({ authUser }) => {
             if (dataCands.status === 'success') { setDailyCandidates(Array.isArray(dataCands.data) ? dataCands.data : []); }
 
             try {
-                // Fetch Performance Data
                 const resPerf = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify({ action: 'getPerfData' }) });
                 const dataPerf = await resPerf.json();
                 if (dataPerf.status === 'success' && dataPerf.data) {
@@ -181,13 +180,6 @@ export const DailyStats = ({ authUser }) => {
                     }));
                     setPerfData(mappedData); 
                     localStorage.setItem('recruitOps_perfData', JSON.stringify(mappedData));
-                }
-                
-                // Fetch Locked Dates (NEW)
-                const resLocks = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify({ action: 'getLockedDates' }) });
-                const dataLocks = await resLocks.json();
-                if (dataLocks.status === 'success') {
-                    setLockedDates(Array.isArray(dataLocks.data) ? dataLocks.data : []);
                 }
             } catch (e) { const saved = localStorage.getItem('recruitOps_perfData'); if (saved) setPerfData(JSON.parse(saved)); }
         } catch (error) {} finally { if (showLoading) setIsLoading(false); }
@@ -204,31 +196,6 @@ export const DailyStats = ({ authUser }) => {
             window.removeEventListener('refreshActiveTab', handleSync);
         };
     }, []);
-
-    // FUNGSI BARU: Mengunci/Membuka Tanggal Laporan
-    const handleToggleLock = async (tanggal) => {
-        if (!window.confirm(`Anda yakin ingin mengubah status manual untuk tanggal ${formatToDDMMYYYY(tanggal)}?`)) return;
-        
-        const isCurrentlyLocked = lockedDates.includes(tanggal);
-        
-        // Optimistic UI Update
-        if (isCurrentlyLocked) {
-            setLockedDates(prev => prev.filter(d => d !== tanggal));
-        } else {
-            setLockedDates(prev => [...prev, tanggal]);
-        }
-
-        try {
-            await fetch(SCRIPT_URL, {
-                method: 'POST',
-                body: JSON.stringify({ action: 'toggleLockDate', tanggal: tanggal })
-            });
-        } catch (error) {
-            console.error("Gagal mengubah status lock", error);
-            alert("Gagal menghubungi server. Status mungkin belum berubah.");
-            fetchData(false); // Re-sync if failed
-        }
-    };
 
     // -------------------------------------------------------------
     // ENGINE BISNIS H+1 REPORTING
@@ -530,10 +497,7 @@ export const DailyStats = ({ authUser }) => {
     const renderInputRow = (item, isSelesai = false) => {
         const { staff, username, p, auto, evalP } = item;
         const status = getReportStatus(p, filterTanggalKerja);
-        
-        // MODIFIKASI: Staf tidak bisa mengedit jika statusnya Locked ATAU tanggal tersebut dikunci manual oleh admin
-        const isManualLocked = lockedDates.includes(filterTanggalKerja);
-        const isLocked = !isPrivileged && (status === 'Locked' || isManualLocked);
+        const isLocked = !isPrivileged && status === 'Locked';
 
         return (
             <tr key={username} className={`hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10 transition-colors group ${evalP.dendaTelat > 0 && !p ? 'bg-rose-50/30' : ''} ${isSelesai ? 'opacity-80 hover:opacity-100 bg-gray-50/50 dark:bg-gray-900/20' : ''}`}>
@@ -592,10 +556,7 @@ export const DailyStats = ({ authUser }) => {
     const renderInputCard = (item, isSelesai = false) => {
         const { staff, username, p, auto, evalP } = item;
         const status = getReportStatus(p, filterTanggalKerja);
-        
-        // MODIFIKASI
-        const isManualLocked = lockedDates.includes(filterTanggalKerja);
-        const isLocked = !isPrivileged && (status === 'Locked' || isManualLocked);
+        const isLocked = !isPrivileged && status === 'Locked';
 
         return (
             <div key={username} className={`bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-4 shadow-sm relative ${isSelesai ? 'opacity-80 border-dashed bg-gray-50/50 dark:bg-gray-900/20' : ''}`}>
@@ -718,24 +679,6 @@ export const DailyStats = ({ authUser }) => {
                             <div className="flex flex-col sm:flex-row sm:items-center gap-2 bg-gray-50 dark:bg-gray-900 p-2 sm:p-1.5 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm shrink-0">
                                 <label className="text-[10px] sm:text-xs font-black text-gray-400 uppercase tracking-widest pl-2">Tgl Kerja:</label>
                                 <input type="date" value={filterTanggalKerja} onChange={e=>setFilterTanggalKerja(e.target.value)} className="bg-white dark:bg-gray-800 border-none rounded-lg px-3 py-2 text-xs font-bold focus:ring-2 focus:ring-indigo-500 outline-none w-full sm:w-auto shadow-sm" />
-                                
-                                {/* UI MODIFIKASI: Tombol Kunci Laporan Manual */}
-                                {isPrivileged && (
-                                    <button 
-                                        onClick={() => handleToggleLock(filterTanggalKerja)}
-                                        className={`px-4 py-2 text-[10px] sm:text-xs font-black uppercase tracking-widest rounded-lg shadow-sm transition-all whitespace-nowrap ${
-                                            lockedDates.includes(filterTanggalKerja) 
-                                            ? 'bg-rose-100 text-rose-600 hover:bg-rose-200 border border-rose-200' 
-                                            : 'bg-emerald-100 text-emerald-600 hover:bg-emerald-200 border border-emerald-200'
-                                        }`}
-                                    >
-                                        {lockedDates.includes(filterTanggalKerja) ? (
-                                            <><i className="ph-bold ph-lock mr-1"></i> Terkunci (Manual)</>
-                                        ) : (
-                                            <><i className="ph-bold ph-lock-key-open mr-1"></i> Terbuka (Manual)</>
-                                        )}
-                                    </button>
-                                )}
                             </div>
                         )}
                         {activeTab === 'harian' && (

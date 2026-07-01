@@ -6,6 +6,7 @@ export const Payroll = ({ authUser }) => {
     const [data, setData] = useState([]);
     const [users, setUsers] = useState([]);
     const [dailyData, setDailyData] = useState([]);
+    const [perfData, setPerfData] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [filterPeriod, setFilterPeriod] = useState('');
@@ -13,14 +14,92 @@ export const Payroll = ({ authUser }) => {
     // Modal & Form State
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [modalMode, setModalMode] = useState('add');
+    const [useManualInput, setUseManualInput] = useState(false);
+    
+    const [manualRecruiters, setManualRecruiters] = useState(() => {
+        try {
+            const saved = localStorage.getItem('recruitOps_manual_recruiters');
+            return saved ? JSON.parse(saved) : [
+                { username: 'rec_alex', name: 'Alex Recruiter', uid: 'UID-ALEX-01' },
+                { username: 'rec_sandra', name: 'Sandra Recruiter', uid: 'UID-SANDRA-02' }
+            ];
+        } catch (e) {
+            return [];
+        }
+    });
+
+    useEffect(() => {
+        localStorage.setItem('recruitOps_manual_recruiters', JSON.stringify(manualRecruiters));
+    }, [manualRecruiters]);
+
     const [formData, setFormData] = useState({
-        id: '', periode: '', username: '', uid: '', hariKerja: '', totalPostingan: '',
+        id: '', periode: '', username: '', fullName: '', uid: '', hariKerja: '', totalPostingan: '',
         deklarasiT0: '0', sebenarnyaT0: '0', t3: '', deklarasiV0: '0', sebenarnyaV0: '0',
         rasioPeningkatan: '0%', komisi: '', bonusT0: '', bonusT3: '', otherBonus: '', deduksi: '',
-        status: 'Draft'
+        status: 'Draft', gajiPokok: ''
     });
 
     const isPrivileged = authUser && hasEditAccess('payroll', authUser.role);
+
+    const getMondayOfDate = (dateStr) => {
+        if (!dateStr) return "";
+        try {
+            const d = new Date(dateStr);
+            const day = d.getDay();
+            const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+            const monday = new Date(d.setDate(diff));
+            return `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, '0')}-${String(monday.getDate()).padStart(2, '0')}`;
+        } catch (e) { return dateStr; }
+    };
+
+    const handleDateChange = (dateVal) => {
+        const monday = getMondayOfDate(dateVal);
+        setFormData(prev => ({ ...prev, periode: monday }));
+    };
+
+    // Auto detect if the edited user is a manual input (not registered)
+    useEffect(() => {
+        if (isModalOpen && modalMode === 'edit' && formData.username) {
+            const isRegistered = users.some(u => u.username === formData.username);
+            setUseManualInput(!isRegistered);
+        }
+    }, [isModalOpen, modalMode, formData.username, users]);
+
+    // Auto-calculate default Gaji Pokok, auto-calculated Komisi, and other bonus when metrics change in Add mode
+    useEffect(() => {
+        if (isModalOpen && modalMode === 'add') {
+            const aktif = Number(formData.sebenarnyaT0) || 0;
+            const promosi = (Number(formData.t3) || 0) + (Number(formData.sebenarnyaV0) || 0);
+            let level = 0;
+            if (aktif >= 21 && promosi >= 12) { level = 3; }
+            else if (aktif >= 14 && promosi >= 7) { level = 2; }
+            else if (aktif >= 7 && promosi >= 3) { level = 1; }
+
+            let defaultPokok = 0;
+            if (level === 3) defaultPokok = 500000;
+            else if (level === 2) defaultPokok = 400000;
+            else if (level === 1) defaultPokok = 300000;
+
+            let autoKomisi = 0;
+            if (level === 3) {
+                autoKomisi = (aktif * 5000) + (promosi * 9000);
+            } else if (level === 2) {
+                autoKomisi = (aktif * 5000) + (promosi * 8000);
+            } else if (level === 1) {
+                autoKomisi = (aktif * 5000) + (promosi * 7000);
+            }
+
+            const hariKerja = Number(formData.hariKerja) || 0;
+            const defaultOtherBonus = (hariKerja === 7) ? 50000 : 0;
+
+            setFormData(prev => ({
+                ...prev,
+                gajiPokok: prev.gajiPokok === '' ? String(defaultPokok) : prev.gajiPokok,
+                komisi: prev.komisi === '' ? String(autoKomisi) : prev.komisi,
+                otherBonus: prev.otherBonus === '' ? (defaultOtherBonus > 0 ? String(defaultOtherBonus) : '') : prev.otherBonus
+            }));
+        }
+    }, [formData.sebenarnyaT0, formData.sebenarnyaV0, formData.t3, formData.hariKerja, isModalOpen, modalMode]);
 
     const getSundayStr = (mondayStr) => {
         if (!mondayStr) return "";
@@ -84,6 +163,13 @@ export const Payroll = ({ authUser }) => {
                     if (dailyResult.status === 'success' && isMounted) {
                         setDailyData(Array.isArray(dailyResult.data) ? dailyResult.data : []);
                     }
+
+                    // 4. Fetch Performance Reports (Untuk Total Postingan per Staff)
+                    const resPerf = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify({ action: 'getPerfData' }) });
+                    const perfResult = await resPerf.json();
+                    if (perfResult.status === 'success' && isMounted) {
+                        setPerfData(Array.isArray(perfResult.data) ? perfResult.data : []);
+                    }
                 }
 
             } catch (error) {} finally { if (showLoading && isMounted) setIsLoading(false); }
@@ -103,10 +189,10 @@ export const Payroll = ({ authUser }) => {
     }, [authUser, isPrivileged]);
 
     // =========================================================================
-    // FUNGSI AUTO-FILL 1: DEKLARASI (Semua Status) & SEBENARNYA (Hanya ACC)
+    // FUNGSI AUTO-FILL 1: DEKLARASI (Semua Status), SEBENARNYA (ACC), & TOTAL POSTINGAN
     // =========================================================================
     useEffect(() => {
-        if (isModalOpen && formData.username && formData.periode && dailyData.length > 0) {
+        if (isModalOpen && formData.username && formData.periode) {
             const startDate = new Date(formData.periode);
             startDate.setHours(0, 0, 0, 0);
             const endDate = new Date(startDate.getTime());
@@ -118,39 +204,59 @@ export const Payroll = ({ authUser }) => {
             let autoT0 = 0; 
             let autoV0 = 0; 
 
-            dailyData.forEach(d => {
-                const rec = d.recruiter || d.username;
-                if (rec === formData.username) {
-                    const dDate = new Date(d.tanggal);
-                    if (dDate >= startDate && dDate <= endDate) {
-                        const isV0 = (d.grup || '').toUpperCase().includes('V0');
-                        const statusData = (d.results || '').toLowerCase();
-                        
-                        if (isV0) declV0++;
-                        else declT0++;
+            if (dailyData.length > 0) {
+                dailyData.forEach(d => {
+                    const rec = d.recruiter || d.username;
+                    if (rec === formData.username) {
+                        const dDate = new Date(d.tanggal);
+                        if (dDate >= startDate && dDate <= endDate) {
+                            const isV0 = (d.grup || '').toUpperCase().includes('V0');
+                            const statusData = (d.results || '').toLowerCase();
+                            
+                            if (isV0) declV0++;
+                            else declT0++;
 
-                        if (statusData === 'acc') {
-                            if (isV0) autoV0++;
-                            else autoT0++;
+                            if (statusData === 'acc') {
+                                if (isV0) autoV0++;
+                                else autoT0++;
+                            }
                         }
                     }
-                }
-            });
+                });
+            }
+
+            // Hitung total postingan dari perfData
+            let autoPostingan = 0;
+            if (perfData && perfData.length > 0) {
+                perfData.forEach(p => {
+                    if (p.username === formData.username) {
+                        const pDateStr = p.tanggalKerja || p.tanggal || p.tanggalLapor;
+                        if (pDateStr) {
+                            const pDate = new Date(pDateStr);
+                            if (!isNaN(pDate.getTime()) && pDate >= startDate && pDate <= endDate) {
+                                autoPostingan += (Number(p.postingan) || 0);
+                            }
+                        }
+                    }
+                });
+            }
 
             if (formData.sebenarnyaT0 !== autoT0.toString() || 
                 formData.sebenarnyaV0 !== autoV0.toString() ||
                 formData.deklarasiT0 !== declT0.toString() ||
-                formData.deklarasiV0 !== declV0.toString()) {
+                formData.deklarasiV0 !== declV0.toString() ||
+                formData.totalPostingan !== autoPostingan.toString()) {
                 setFormData(prev => ({
                     ...prev,
                     sebenarnyaT0: autoT0.toString(),
                     sebenarnyaV0: autoV0.toString(),
                     deklarasiT0: declT0.toString(),
-                    deklarasiV0: declV0.toString()
+                    deklarasiV0: declV0.toString(),
+                    totalPostingan: autoPostingan.toString()
                 }));
             }
         }
-    }, [formData.username, formData.periode, dailyData, isModalOpen]);
+    }, [formData.username, formData.periode, dailyData, perfData, isModalOpen]);
 
     // =========================================================================
     // FUNGSI AUTO-FILL 2: RASIO PENINGKATAN
@@ -187,15 +293,45 @@ export const Payroll = ({ authUser }) => {
     const calculatePayrollMetrix = (input) => {
         const aktif = Number(input.sebenarnyaT0) || 0;
         const promosi = (Number(input.t3) || 0) + (Number(input.sebenarnyaV0) || 0);
-        let level = 0; let pokok = 0;
+        let level = 0;
 
-        if (aktif >= 21 && promosi >= 12) { level = 3; pokok = 500000; }
-        else if (aktif >= 14 && promosi >= 7) { level = 2; pokok = 400000; }
-        else if (aktif >= 7 && promosi >= 3) { level = 1; pokok = 300000; }
+        if (aktif >= 21 && promosi >= 12) { level = 3; }
+        else if (aktif >= 14 && promosi >= 7) { level = 2; }
+        else if (aktif >= 7 && promosi >= 3) { level = 1; }
 
-        const komisi = Number(input.komisi) || 0; const bT0 = Number(input.bonusT0) || 0; const bT3 = Number(input.bonusT3) || 0; const bOther = Number(input.otherBonus) || 0; const deduksi = Number(input.deduksi) || 0;
+        let defaultPokok = 0;
+        if (level === 3) defaultPokok = 500000;
+        else if (level === 2) defaultPokok = 400000;
+        else if (level === 1) defaultPokok = 300000;
+
+        // Base salary: manual override if entered, otherwise default from level
+        const pokok = (input.gajiPokok !== undefined && input.gajiPokok !== '') ? Number(input.gajiPokok) : defaultPokok;
+
+        // Commission auto-calculated formula based on level (1, 2, or 3)
+        // Level 3: sebenarnyaT0 * 5000 + (t3 + sebenarnyaV0) * 9000
+        // Level 2: sebenarnyaT0 * 5000 + (t3 + sebenarnyaV0) * 8000
+        // Level 1: sebenarnyaT0 * 5000 + (t3 + sebenarnyaV0) * 7000
+        let autoKomisi = 0;
+        if (level === 3) {
+            autoKomisi = (aktif * 5000) + (promosi * 9000);
+        } else if (level === 2) {
+            autoKomisi = (aktif * 5000) + (promosi * 8000);
+        } else if (level === 1) {
+            autoKomisi = (aktif * 5000) + (promosi * 7000);
+        }
+
+        const komisi = (input.komisi !== undefined && input.komisi !== '') ? Number(input.komisi) : autoKomisi;
+        const bT0 = Number(input.bonusT0) || 0; 
+        const bT3 = Number(input.bonusT3) || 0; 
+
+        // Auto-calculated other bonus: 50000 if 7 days of work, otherwise 0 or manual override
+        const hariKerja = Number(input.hariKerja) || 0;
+        const defaultOtherBonus = (hariKerja === 7) ? 50000 : 0;
+        const bOther = (input.otherBonus !== undefined && input.otherBonus !== '') ? Number(input.otherBonus) : defaultOtherBonus; 
+
+        const deduksi = Number(input.deduksi) || 0;
         const total = pokok + komisi + bT0 + bT3 + bOther - deduksi;
-        return { level, pokok, total, aktif, promosi };
+        return { level, pokok, komisi, total, aktif, promosi, autoKomisi, defaultPokok, defaultOtherBonus, bOther };
     };
 
     const liveStats = calculatePayrollMetrix(formData);
@@ -203,8 +339,13 @@ export const Payroll = ({ authUser }) => {
     const handleSave = async (e) => {
         e.preventDefault();
         const payload = {
-            ...formData, id: modalMode === 'add' ? Date.now() : formData.id,
-            levelGaji: liveStats.level, gajiPokok: liveStats.pokok, totalGaji: liveStats.total,
+            ...formData, 
+            id: modalMode === 'add' ? Date.now() : formData.id,
+            levelGaji: liveStats.level, 
+            gajiPokok: String(liveStats.pokok),
+            komisi: String(liveStats.komisi),
+            otherBonus: String(liveStats.bOther),
+            totalGaji: liveStats.total,
             status: formData.status || 'Draft',
             startWeek: formData.periode,
             endWeek: getSundayStr(formData.periode),
@@ -233,6 +374,51 @@ export const Payroll = ({ authUser }) => {
         try { await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify({ action: 'updatePayrollData', id, status: newStatus }) }); } catch(err) {}
     };
 
+    const handleSharePayroll = (d) => {
+        const totalBonus = (Number(d.komisi)||0) + (Number(d.bonusT0)||0) + (Number(d.bonusT3)||0) + (Number(d.otherBonus)||0);
+        const formatMoney = (amount) => `Rp ${(Number(amount) || 0).toLocaleString('id-ID')}`;
+        
+        const message = `*SLIP GAJI DIGITAL - RECRUITOPS*
+---------------------------------------
+👤 *Nama:* ${d.fullName || d.username}
+🆔 *UID:* ${d.uid || '-'}
+📅 *Week ID:* ${getWeekId(d.periode)}
+📆 *Periode:* ${formatToDDMMYYYY(d.periode)} - ${formatToDDMMYYYY(getSundayStr(d.periode))}
+💰 *Pencairan:* ${formatToDDMMYYYY(getPayrollDateOfMonday(d.periode))}
+---------------------------------------
+📈 *Metrik Kinerja:*
+• Hari Kerja: ${d.hariKerja || 0} Hari
+• ACC T0: ${d.sebenarnyaT0 || 0} Anggota
+• Elit V0: ${d.sebenarnyaV0 || 0} Anggota
+• Ke T3: ${d.t3 || 0} Anggota
+• Level Gaji: LVL ${d.levelGaji || 0}
+---------------------------------------
+💵 *Rincian Pendapatan:*
+• Gaji Pokok: ${formatMoney(d.gajiPokok)}
+• Komisi: ${formatMoney(d.komisi)}
+• Bonus T0: ${formatMoney(d.bonusT0)}
+• Bonus T3: ${formatMoney(d.bonusT3)}
+• Bonus Lainnya: ${formatMoney(d.otherBonus)}
+• Potongan/Deduksi: -${formatMoney(d.deduksi)}
+---------------------------------------
+🔥 *TOTAL TAKE HOME PAY:*
+👉 *${formatMoney(d.totalGaji)}*
+---------------------------------------
+Status: ✅ ${d.status || 'Draft'}
+
+*Terima kasih atas dedikasi dan kerja keras Anda!*`;
+
+        // Copy to clipboard
+        navigator.clipboard.writeText(message).then(() => {
+            alert(`Rincian gaji ${d.fullName || d.username} berhasil disalin ke clipboard! Membuka WhatsApp...`);
+            const encoded = encodeURIComponent(message);
+            window.open(`https://api.whatsapp.com/send?text=${encoded}`, '_blank');
+        }).catch(() => {
+            const encoded = encodeURIComponent(message);
+            window.open(`https://api.whatsapp.com/send?text=${encoded}`, '_blank');
+        });
+    };
+
     const handlePublishAll = () => {
         if(!window.confirm("Umumkan SEMUA slip gaji di layar ini kepada staf?")) return;
         const updatedData = data.map(d => currentData.find(c => c.id === d.id) ? { ...d, status: 'Published' } : d);
@@ -246,16 +432,18 @@ export const Payroll = ({ authUser }) => {
 
     const handleUserSelect = (username) => {
         const u = users.find(x => x.username === username);
-        setFormData({ ...formData, username: username, uid: u ? (u.uid || '') : '' });
+        setFormData({ ...formData, username: username, fullName: u ? (u.name || '') : '', uid: u ? (u.uid || '') : '' });
     };
 
     const currentData = data.filter(d => {
         const matchPeriod = filterPeriod ? d.periode === filterPeriod : true;
-        const matchSearch = d.username?.toLowerCase().includes(searchQuery.toLowerCase()) || d.uid?.includes(searchQuery);
+        const matchSearch = d.username?.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                            d.uid?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                            d.fullName?.toLowerCase().includes(searchQuery.toLowerCase());
         return matchPeriod && matchSearch;
     }).map(d => {
         const u = users.find(x => x.username === d.username);
-        return { ...d, fullName: u?.name || d.username, role: u?.role || 'Staff' };
+        return { ...d, fullName: d.fullName || u?.name || d.username, role: u?.role || 'Staff' };
     }).sort((a, b) => b.totalGaji - a.totalGaji);
 
     const availablePeriods = [...new Set(data.map(d => d.periode))].sort((a: any, b: any) => new Date(b).getTime() - new Date(a).getTime());
@@ -349,32 +537,70 @@ export const Payroll = ({ authUser }) => {
                                           </div>
                                       </div>
 
-                                      <div className="space-y-3 bg-gray-50/50 dark:bg-gray-900/30 p-5 rounded-2xl border border-gray-100 dark:border-gray-700/50 relative z-10">
+                                      <div className="space-y-3 bg-gray-50/50 dark:bg-gray-900/30 p-5 rounded-2xl border border-gray-100 dark:border-gray-700/50 relative z-10 text-xs">
                                           <div className="flex justify-between items-center text-xs">
                                               <span className="font-bold text-gray-500">Gaji Pokok Dasar</span>
                                               <span className="font-black text-gray-800 dark:text-gray-200">{formatCurrency(d.gajiPokok)}</span>
                                           </div>
-                                          <div className="flex justify-between items-center text-xs">
-                                              <span className="font-bold text-emerald-600 dark:text-emerald-400 flex items-center"><i className="ph-bold ph-plus-circle mr-1"></i> Total Insentif / Bonus</span>
-                                              <span className="font-black text-emerald-600 dark:text-emerald-400">+{formatCurrency(totalBonus)}</span>
+                                          
+                                          {/* Detailed breakdown of bonuses */}
+                                          <div className="pt-2 border-t border-gray-100 dark:border-gray-800/50 space-y-2">
+                                              <div className="text-[9px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-500">Rincian Insentif:</div>
+                                              <div className="flex justify-between items-center text-gray-600 dark:text-gray-400">
+                                                  <span>• Komisi Kinerja</span>
+                                                  <span className="font-semibold">{formatCurrency(d.komisi)}</span>
+                                              </div>
+                                              {Number(d.bonusT0) > 0 && (
+                                                  <div className="flex justify-between items-center text-gray-600 dark:text-gray-400">
+                                                      <span>• Bonus T0</span>
+                                                      <span className="font-semibold">{formatCurrency(d.bonusT0)}</span>
+                                                  </div>
+                                              )}
+                                              {Number(d.bonusT3) > 0 && (
+                                                  <div className="flex justify-between items-center text-gray-600 dark:text-gray-400">
+                                                      <span>• Bonus T3</span>
+                                                      <span className="font-semibold">{formatCurrency(d.bonusT3)}</span>
+                                                  </div>
+                                              )}
+                                              {Number(d.otherBonus) > 0 && (
+                                                  <div className="flex justify-between items-center text-gray-600 dark:text-gray-400">
+                                                      <span className="flex items-center gap-1">
+                                                          • Other Bonus
+                                                          {Number(d.hariKerja) === 7 && <span className="text-[8px] bg-emerald-100 text-emerald-800 px-1 py-0.5 rounded font-black">7 HARI</span>}
+                                                      </span>
+                                                      <span className="font-semibold">{formatCurrency(d.otherBonus)}</span>
+                                                  </div>
+                                              )}
+                                              <div className="flex justify-between items-center font-bold text-emerald-600 dark:text-emerald-400 pt-1.5 border-t border-dashed border-gray-200 dark:border-gray-700">
+                                                  <span>Total Insentif</span>
+                                                  <span className="font-black">+{formatCurrency(totalBonus)}</span>
+                                              </div>
                                           </div>
+
                                           {Number(d.deduksi) > 0 && (
-                                              <div className="flex justify-between items-center text-xs pt-3 mt-1 border-t border-dashed border-gray-200 dark:border-gray-700">
-                                                  <span className="font-bold text-rose-500 flex items-center"><i className="ph-bold ph-minus-circle mr-1"></i> Potongan / Deduksi</span>
-                                                  <span className="font-black text-rose-500">-{formatCurrency(d.deduksi)}</span>
+                                              <div className="flex justify-between items-center pt-2.5 mt-1 border-t border-dashed border-gray-200 dark:border-gray-700 text-rose-500">
+                                                  <span className="font-bold flex items-center"><i className="ph-bold ph-minus-circle mr-1 text-sm"></i> Potongan / Deduksi</span>
+                                                  <span className="font-black">-{formatCurrency(d.deduksi)}</span>
                                               </div>
                                           )}
                                       </div>
 
                                       <div className="mt-6 pt-5 border-t border-gray-100 dark:border-gray-700 relative z-10">
                                           <div className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-3 text-center">Metrik Pencapaian Anda</div>
-                                          <div className="grid grid-cols-4 gap-2 text-center">
+                                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
                                               <div className="bg-white dark:bg-gray-800 rounded-xl p-2 shadow-sm border border-gray-100 dark:border-gray-700"><div className="text-[8px] font-bold text-gray-400 uppercase mb-1">Hari</div><div className="text-xs font-black text-gray-800 dark:text-gray-200">{d.hariKerja||0}</div></div>
                                               <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-xl p-2 shadow-sm border border-emerald-100 dark:border-emerald-800/30"><div className="text-[8px] font-bold text-emerald-600 uppercase mb-1">ACC T0</div><div className="text-xs font-black text-emerald-700 dark:text-emerald-400">{d.sebenarnyaT0||0}</div></div>
                                               <div className="bg-purple-50 dark:bg-purple-900/20 rounded-xl p-2 shadow-sm border border-purple-100 dark:border-purple-800/30"><div className="text-[8px] font-bold text-purple-600 uppercase mb-1">Elit V0</div><div className="text-xs font-black text-purple-700 dark:text-purple-400">{d.sebenarnyaV0||0}</div></div>
                                               <div className="bg-indigo-50 dark:bg-indigo-900/20 rounded-xl p-2 shadow-sm border border-indigo-100 dark:border-indigo-800/30"><div className="text-[8px] font-bold text-indigo-600 uppercase mb-1">Ke T3</div><div className="text-xs font-black text-indigo-700 dark:text-indigo-400">{d.t3||0}</div></div>
                                           </div>
                                       </div>
+                                      <button 
+                                          onClick={() => handleSharePayroll(d)}
+                                          className="w-full mt-4 py-2.5 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900/50 rounded-2xl flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-wider transition-all"
+                                          title="Salin & Bagikan Rincian Slip Gaji"
+                                      >
+                                          <i className="ph-fill ph-whatsapp-logo text-sm text-emerald-500"></i> Salin & Bagikan Slip
+                                      </button>
                                   </div>
                               )
                          })}
@@ -484,9 +710,26 @@ export const Payroll = ({ authUser }) => {
                         <button onClick={()=>{
                             setModalMode('add'); 
                             setFormData({
-                                id:'', periode: new Date().toISOString().split('T')[0], username: '', uid: '', hariKerja: '', totalPostingan: '', 
-                                deklarasiT0: '0', sebenarnyaT0: '0', t3: '', deklarasiV0: '0', sebenarnyaV0: '0', 
-                                rasioPeningkatan: '0%', komisi: '', bonusT0: '', bonusT3: '', otherBonus: '', deduksi: '', status: 'Draft'
+                                id:'', 
+                                periode: getMondayOfDate(new Date().toISOString().split('T')[0]), 
+                                username: '', 
+                                fullName: '', 
+                                uid: '', 
+                                hariKerja: '', 
+                                totalPostingan: '', 
+                                deklarasiT0: '0', 
+                                sebenarnyaT0: '0', 
+                                t3: '', 
+                                deklarasiV0: '0', 
+                                sebenarnyaV0: '0', 
+                                rasioPeningkatan: '0%', 
+                                komisi: '', 
+                                bonusT0: '', 
+                                bonusT3: '', 
+                                otherBonus: '', 
+                                deduksi: '', 
+                                status: 'Draft',
+                                gajiPokok: ''
                             }); 
                             setIsModalOpen(true);
                         }} className="w-full sm:w-auto px-5 py-2.5 bg-indigo-600 text-white font-black text-sm rounded-xl shadow-[0_4px_14px_rgba(79,70,229,0.39)] hover:bg-indigo-700 flex justify-center items-center transition-all transform hover:-translate-y-0.5">
@@ -547,8 +790,8 @@ export const Payroll = ({ authUser }) => {
                                             <div className="text-[10px] font-bold text-gray-500 flex items-center gap-1.5 mt-0.5"><i className="ph-bold ph-calendar-blank"></i> {formatToDDMMYYYY(d.periode)}</div>
                                         </div>
                                     </div>
-                                    <div className="bg-gray-50 dark:bg-gray-900/50 rounded-xl p-3 border border-gray-100 dark:border-gray-800 mb-4 grid grid-cols-4 gap-2 text-center divide-x divide-gray-200 dark:divide-gray-700 shadow-inner">
-                                        <div><div className="text-[8px] font-black text-gray-400 uppercase mb-1">Hari</div><div className="text-xs font-black text-gray-700 dark:text-gray-300">{d.hariKerja||0}</div></div>
+                                    <div className="bg-gray-50 dark:bg-gray-900/50 rounded-xl p-3 border border-gray-100 dark:border-gray-800 mb-4 grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-center shadow-inner">
+                                        <div><div className="text-[8px] font-black text-gray-400 uppercase mb-1">Kehadiran</div><div className="text-xs font-black text-gray-700 dark:text-gray-300">{d.hariKerja||0} Hari</div></div>
                                         <div><div className="text-[8px] font-black text-gray-400 uppercase mb-1">Aktif T0</div><div className="text-xs font-black text-emerald-600">{d.sebenarnyaT0||0}</div></div>
                                         <div><div className="text-[8px] font-black text-gray-400 uppercase mb-1">Elit V0</div><div className="text-xs font-black text-purple-600">{d.sebenarnyaV0||0}</div></div>
                                         <div><div className="text-[8px] font-black text-gray-400 uppercase mb-1">Ke T3</div><div className="text-xs font-black text-indigo-600">{d.t3||0}</div></div>
@@ -565,8 +808,9 @@ export const Payroll = ({ authUser }) => {
                                             <button onClick={() => handleTogglePublish(d.id, d.status)} className={`flex-1 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center justify-center border shadow-sm transition-all ${d.status === 'Published' ? 'bg-amber-50 text-amber-600 border-amber-200 hover:bg-amber-100' : 'bg-emerald-500 text-white border-emerald-600 hover:bg-emerald-600'}`}>
                                                 <i className={`ph-bold ${d.status === 'Published' ? 'ph-eye-slash' : 'ph-megaphone'} mr-1.5 text-sm`}></i> {d.status === 'Published' ? 'Tarik (Draft)' : 'Rilis Sekarang'}
                                             </button>
-                                            <button onClick={()=>{setModalMode('edit'); setFormData(d); setIsModalOpen(true);}} className="w-9 h-9 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-indigo-500 rounded-lg flex items-center justify-center shadow-sm"><i className="ph-bold ph-pencil-simple text-sm"></i></button>
-                                            <button onClick={()=>handleDelete(d.id)} className="w-9 h-9 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-rose-500 rounded-lg flex items-center justify-center shadow-sm"><i className="ph-bold ph-trash text-sm"></i></button>
+                                            <button onClick={()=>{setModalMode('edit'); setFormData(d); setIsModalOpen(true);}} className="w-9 h-9 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-indigo-500 rounded-lg flex items-center justify-center shadow-sm" title="Edit Slip Gaji"><i className="ph-bold ph-pencil-simple text-sm"></i></button>
+                                            <button onClick={()=>handleSharePayroll(d)} className="w-9 h-9 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/50 text-emerald-600 hover:text-emerald-500 rounded-lg flex items-center justify-center shadow-sm" title="Kirim Slip Gaji ke Staff (WhatsApp)"><i className="ph-fill ph-whatsapp-logo text-base text-emerald-500"></i></button>
+                                            <button onClick={()=>handleDelete(d.id)} className="w-9 h-9 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-rose-500 rounded-lg flex items-center justify-center shadow-sm" title="Hapus Slip Gaji"><i className="ph-bold ph-trash text-sm"></i></button>
                                         </div>
                                     )}
                                 </div>
@@ -665,8 +909,9 @@ export const Payroll = ({ authUser }) => {
                                                         <button onClick={() => handleTogglePublish(d.id, d.status)} className={`px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest flex items-center border shadow-sm transition-colors ${d.status === 'Published' ? 'bg-amber-50 text-amber-600 border-amber-200 hover:bg-amber-100' : 'bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100'}`} title={d.status === 'Published' ? 'Ubah ke Draft' : 'Umumkan ke Staff'}>
                                                             <i className={`ph-bold ${d.status === 'Published' ? 'ph-eye-slash' : 'ph-megaphone'} mr-1 text-sm`}></i> {d.status === 'Published' ? 'Tarik' : 'Rilis'}
                                                         </button>
-                                                        <button onClick={()=>{setModalMode('edit'); setFormData(d); setIsModalOpen(true);}} className="w-6 h-6 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-500 hover:text-indigo-500 rounded flex items-center justify-center shadow-sm"><i className="ph-bold ph-pencil-simple text-xs"></i></button>
-                                                        <button onClick={()=>handleDelete(d.id)} className="w-6 h-6 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-500 hover:text-rose-500 rounded flex items-center justify-center shadow-sm"><i className="ph-bold ph-trash text-xs"></i></button>
+                                                        <button onClick={()=>{setModalMode('edit'); setFormData(d); setIsModalOpen(true);}} className="w-6 h-6 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-500 hover:text-indigo-500 rounded flex items-center justify-center shadow-sm" title="Edit Slip Gaji"><i className="ph-bold ph-pencil-simple text-xs"></i></button>
+                                                        <button onClick={()=>handleSharePayroll(d)} className="w-6 h-6 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/50 text-emerald-600 hover:text-emerald-500 rounded flex items-center justify-center shadow-sm" title="Kirim Slip Gaji ke Staff (WhatsApp)"><i className="ph-fill ph-whatsapp-logo text-emerald-500"></i></button>
+                                                        <button onClick={()=>handleDelete(d.id)} className="w-6 h-6 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-500 hover:text-rose-500 rounded flex items-center justify-center shadow-sm" title="Hapus Slip Gaji"><i className="ph-bold ph-trash text-xs"></i></button>
                                                     </div>
                                                 </td>
                                             )}
@@ -683,7 +928,7 @@ export const Payroll = ({ authUser }) => {
             {isModalOpen && isPrivileged && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4">
                     <div className="absolute inset-0 bg-gray-900/80 backdrop-blur-sm" onClick={()=>setIsModalOpen(false)}></div>
-                    <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl w-full max-w-5xl overflow-hidden flex flex-col relative z-10 animate-in zoom-in-95 duration-200 border-t-[6px] border-t-emerald-500">
+                    <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl w-full max-w-5xl max-h-[95vh] sm:max-h-[90vh] overflow-hidden flex flex-col relative z-10 animate-in zoom-in-95 duration-200 border-t-[6px] border-t-emerald-500">
                         <div className="px-6 py-5 border-b border-gray-100 dark:border-gray-700/60 flex justify-between bg-white/50 dark:bg-gray-800/50 items-center">
                             <h2 className="font-black flex items-center text-lg sm:text-xl text-gray-900 dark:text-white tracking-tight">
                                 <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mr-3 border border-emerald-100 dark:border-emerald-800/50"><i className={`ph-bold ${modalMode === 'add' ? 'ph-plus' : 'ph-pencil-simple'} text-xl`}></i></div>
@@ -691,39 +936,243 @@ export const Payroll = ({ authUser }) => {
                             </h2>
                             <button onClick={()=>setIsModalOpen(false)} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 hover:bg-rose-100 hover:text-rose-600 transition-colors"><i className="ph-bold ph-x text-lg"></i></button>
                         </div>
-                        <form onSubmit={handleSave} className="p-4 sm:p-6 lg:p-8 overflow-y-auto max-h-[85vh] custom-scrollbar bg-gray-50/30 dark:bg-gray-900/30 flex flex-col lg:flex-row gap-6 lg:gap-8">
+                        <form onSubmit={handleSave} className="p-4 sm:p-6 lg:p-8 flex-1 overflow-y-auto custom-scrollbar bg-gray-50/30 dark:bg-gray-900/30 flex flex-col lg:flex-row gap-6 lg:gap-8">
                             
                             {/* BAGIAN KIRI: INPUT METRIK */}
                             <div className="flex-1 space-y-6">
                                 {/* Section 1: Info Dasar */}
-                                <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl border border-gray-200/80 dark:border-gray-700/80 shadow-sm">
-                                    <h4 className="text-[10px] font-black uppercase tracking-widest text-indigo-500 mb-4 flex items-center"><i className="ph-fill ph-identification-card mr-1.5 text-sm"></i> 1. Identitas & Periode</h4>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                        <div><label className="block text-[10px] font-bold text-gray-500 mb-1.5 uppercase ml-1">Periode (Tanggal Awal Minggu)</label><input type="date" required className={InputCls} value={formData.periode} onChange={e=>setFormData({...formData, periode: e.target.value})} disabled={modalMode === 'edit'} /></div>
-                                        <div>
-                                            <label className="block text-[10px] font-bold text-gray-500 mb-1.5 uppercase ml-1">Pilih Anggota Staff</label>
-                                            <select required className={InputCls} value={formData.username} onChange={e=>handleUserSelect(e.target.value)} disabled={modalMode === 'edit'}>
-                                                <option value="" disabled>-- Pilih Akun --</option>
-                                                {users.filter(u=>u.role==='Staff' && u.status==='Aktif').map((u, i) => <option key={i} value={u.username}>{u.name} ({u.username})</option>)}
-                                            </select>
+                                <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl border border-gray-200/80 dark:border-gray-700/80 shadow-sm space-y-5">
+                                    <h4 className="text-[10px] font-black uppercase tracking-widest text-indigo-500 mb-2 flex items-center"><i className="ph-fill ph-identification-card mr-1.5 text-sm"></i> 1. Identitas & Periode Gaji</h4>
+                                    
+                                    <div className="w-full">
+                                        <label className="block text-[10px] font-bold text-gray-500 mb-1.5 uppercase ml-1">Periode (Tanggal Pilih)</label>
+                                        <input 
+                                            type="date" 
+                                            required 
+                                            className={InputCls} 
+                                            value={formData.periode} 
+                                            onChange={e=>handleDateChange(e.target.value)} 
+                                            disabled={modalMode === 'edit'} 
+                                        />
+                                    </div>
+
+                                    {/* Detailed period metrics and payment rules card */}
+                                    <div className="bg-gradient-to-r from-indigo-500/10 to-emerald-500/10 p-4 rounded-xl border border-indigo-500/10 space-y-3">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center shadow-sm">
+                                                <i className="ph-bold ph-calendar-blank text-sm"></i>
+                                            </div>
+                                            <div>
+                                                <h5 className="font-black text-[11px] text-gray-800 dark:text-gray-200 uppercase tracking-wider">Masa Kerja & Pencairan</h5>
+                                            </div>
                                         </div>
-                                        <div><label className="block text-[10px] font-bold text-gray-500 mb-1.5 uppercase ml-1">UID Akun</label><input type="text" readOnly placeholder="Otomatis" className={`${InputCls} bg-gray-100 dark:bg-gray-800 text-gray-400 cursor-not-allowed`} value={formData.uid} /></div>
-                                        <div><label className="block text-[10px] font-bold text-gray-500 mb-1.5 uppercase ml-1">Hari Kerja</label><input type="number" min="0" required placeholder="0" className={InputCls} value={formData.hariKerja} onChange={e=>setFormData({...formData, hariKerja: e.target.value})} /></div>
+
+                                        <div className="grid grid-cols-2 gap-2 text-center">
+                                            <div className="bg-white/90 dark:bg-gray-800/90 p-2 rounded-lg border border-gray-200/50 dark:border-gray-700/50">
+                                                <span className="block text-[8px] font-bold text-gray-400 uppercase mb-0.5">Kerja (Senin - Minggu)</span>
+                                                <span className="font-black text-xs text-indigo-600 dark:text-indigo-400">
+                                                    {formData.periode ? `${formatToDDMMYYYY(formData.periode)} - ${formatToDDMMYYYY(getSundayStr(formData.periode))}` : '-'}
+                                                </span>
+                                            </div>
+                                            <div className="bg-white/90 dark:bg-gray-800/90 p-2 rounded-lg border border-gray-200/50 dark:border-gray-700/50">
+                                                <span className="block text-[8px] font-bold text-gray-400 uppercase mb-0.5">Tanggal Bayar (Jumat Depan)</span>
+                                                <span className="font-black text-xs text-emerald-600 dark:text-emerald-400 font-mono">
+                                                    {formData.periode ? formatToDDMMYYYY(getPayrollDateOfMonday(formData.periode)) : '-'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <p className="text-[9px] text-gray-500 dark:text-gray-400 text-center font-bold">
+                                            💡 Contoh: Bekerja 22/06 s/d 28/06 akan dibayarkan tanggal 03/07.
+                                        </p>
+                                    </div>
+
+                                    {/* Selection source tabs for recruiter */}
+                                    <div className="border-t border-gray-100 dark:border-gray-700/60 pt-4 space-y-3">
+                                        <label className="block text-[10px] font-black text-gray-500 uppercase ml-1">Sumber Akun Perekrut</label>
+                                        <div className="flex gap-2 p-1 bg-gray-50 dark:bg-gray-900 rounded-xl">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setUseManualInput(false);
+                                                    setFormData(prev => ({ ...prev, username: '', uid: '', fullName: '' }));
+                                                }}
+                                                className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${!useManualInput ? 'bg-white dark:bg-gray-800 text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-800 dark:hover:text-white'}`}
+                                            >
+                                                <i className="ph-bold ph-users mr-1"></i> Akun Terdaftar
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setUseManualInput(true);
+                                                    setFormData(prev => ({ ...prev, username: '', uid: '', fullName: '' }));
+                                                }}
+                                                className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${useManualInput ? 'bg-white dark:bg-gray-800 text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-800 dark:hover:text-white'}`}
+                                            >
+                                                <i className="ph-bold ph-pencil-simple-line mr-1"></i> Input Manual Perekrut
+                                            </button>
+                                        </div>
+
+                                        {!useManualInput ? (
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                                                <div>
+                                                    <label className="block text-[10px] font-bold text-gray-500 mb-1.5 uppercase ml-1">Pilih Anggota Staff</label>
+                                                    <select required className={InputCls} value={formData.username} onChange={e=>handleUserSelect(e.target.value)} disabled={modalMode === 'edit'}>
+                                                        <option value="" disabled>-- Pilih Akun --</option>
+                                                        {users.filter(u=>u.role==='Staff' && u.status==='Aktif').filter(u => {
+                                                            if (modalMode === 'add' && formData.periode) {
+                                                                return !data.some(p => p.periode === formData.periode && p.username === u.username);
+                                                            }
+                                                            return true;
+                                                        }).map((u, i) => <option key={i} value={u.username}>{u.name} ({u.username})</option>)}
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[10px] font-bold text-gray-500 mb-1.5 uppercase ml-1">UID Akun</label>
+                                                    <input type="text" readOnly placeholder="Otomatis" className={`${InputCls} bg-gray-100 dark:bg-gray-800 text-gray-400 cursor-not-allowed`} value={formData.uid} />
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-4 border border-dashed border-gray-200 dark:border-gray-700 rounded-xl p-4 bg-gray-50/50 dark:bg-gray-800/30 pt-3">
+                                                {/* Fast list selection if available */}
+                                                {manualRecruiters.length > 0 && (
+                                                    <div>
+                                                        <label className="block text-[10px] font-bold text-gray-500 mb-1.5 uppercase ml-1">Pilih dari Daftar Manual Cepat</label>
+                                                        <select
+                                                            className={InputCls}
+                                                            value=""
+                                                            onChange={e => {
+                                                                const selected = manualRecruiters.find(mr => mr.username === e.target.value);
+                                                                if (selected) {
+                                                                    setFormData(prev => ({
+                                                                        ...prev,
+                                                                        username: selected.username,
+                                                                        fullName: selected.name,
+                                                                        uid: selected.uid
+                                                                    }));
+                                                                }
+                                                            }}
+                                                        >
+                                                            <option value="">-- Gunakan Perekrut Tersimpan --</option>
+                                                            {manualRecruiters.filter(mr => {
+                                                                 if (modalMode === 'add' && formData.periode) {
+                                                                     return !data.some(p => p.periode === formData.periode && p.username === mr.username);
+                                                                 }
+                                                                 return true;
+                                                             }).map((mr, idx) => (
+                                                                <option key={idx} value={mr.username}>
+                                                                    {mr.name} (@{mr.username})
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+                                                )}
+
+                                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                                    <div>
+                                                        <label className="block text-[10px] font-bold text-gray-500 mb-1.5 uppercase ml-1">Username <span className="text-rose-500">*</span></label>
+                                                        <input 
+                                                            type="text" 
+                                                            required 
+                                                            placeholder="recruit_alex" 
+                                                            className={InputCls} 
+                                                            value={formData.username} 
+                                                            onChange={e=>setFormData({...formData, username: e.target.value})} 
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-[10px] font-bold text-gray-500 mb-1.5 uppercase ml-1">Nama Lengkap <span className="text-rose-500">*</span></label>
+                                                        <input 
+                                                            type="text" 
+                                                            required 
+                                                            placeholder="Alex Wijaya" 
+                                                            className={InputCls} 
+                                                            value={formData.fullName || ''} 
+                                                            onChange={e=>setFormData({...formData, fullName: e.target.value})} 
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-[10px] font-bold text-gray-500 mb-1.5 uppercase ml-1">UID Perekrut</label>
+                                                        <input 
+                                                            type="text" 
+                                                            placeholder="UID12345" 
+                                                            className={InputCls} 
+                                                            value={formData.uid} 
+                                                            onChange={e=>setFormData({...formData, uid: e.target.value})} 
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                {formData.username && formData.fullName && (
+                                                    <div className="flex justify-end pt-1">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                if (manualRecruiters.some(mr => mr.username === formData.username)) {
+                                                                    alert("Username ini sudah ada di daftar cepat.");
+                                                                    return;
+                                                                }
+                                                                setManualRecruiters(prev => [
+                                                                    ...prev,
+                                                                    {
+                                                                        username: formData.username,
+                                                                        name: formData.fullName || formData.username,
+                                                                        uid: formData.uid || `UID-${Date.now().toString().slice(-4)}`
+                                                                    }
+                                                                ]);
+                                                            }}
+                                                            className="px-3 py-1.5 bg-indigo-50 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800 rounded-lg text-[9px] font-black uppercase tracking-wider hover:bg-indigo-100 flex items-center gap-1"
+                                                        >
+                                                            <i className="ph-bold ph-plus"></i> Simpan ke Daftar Cepat
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
 
-                                {/* Section 2: Kinerja Konversi & Sinkronisasi Daily Data */}
-                                <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl border border-gray-200/80 dark:border-gray-700/80 shadow-sm relative">
-                                    <h4 className="text-[10px] font-black uppercase tracking-widest text-emerald-500 mb-4 flex items-center"><i className="ph-fill ph-chart-line-up mr-1.5 text-sm"></i> 2. Kinerja Rekrutmen (Penentu Level Gaji)</h4>
+                                {/* Section 2: Kinerja & Kehadiran */}
+                                <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl border border-gray-200/80 dark:border-gray-700/80 shadow-sm relative space-y-4">
+                                    <h4 className="text-[10px] font-black uppercase tracking-widest text-emerald-500 flex items-center mb-1"><i className="ph-fill ph-chart-line-up mr-1.5 text-sm"></i> 2. Kinerja & Kehadiran (Penentu Level Gaji & Bonus)</h4>
                                     
-                                    <div className="mb-4 bg-emerald-50 dark:bg-emerald-900/20 p-3 rounded-xl border border-emerald-100 dark:border-emerald-800/40">
-                                        <label className="block text-[10px] font-bold text-emerald-700 dark:text-emerald-400 mb-1.5 uppercase ml-1">Total Postingan Selama Periode</label>
-                                        <input type="number" min="0" required placeholder="0" className={`${InputCls} !bg-white dark:!bg-gray-800 border-emerald-200 dark:border-emerald-700 focus:ring-emerald-500`} value={formData.totalPostingan} onChange={e=>setFormData({...formData, totalPostingan: e.target.value})} />
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        <div className="bg-indigo-50/50 dark:bg-indigo-950/20 p-3 rounded-xl border border-indigo-100 dark:border-indigo-900/40">
+                                            <label className="block text-[10px] font-black text-indigo-700 dark:text-indigo-400 mb-1.5 uppercase ml-1">Jumlah Kehadiran / Hari Kerja</label>
+                                            <input 
+                                                type="number" 
+                                                min="0" 
+                                                max="7"
+                                                required 
+                                                placeholder="0" 
+                                                className={`${InputCls} !bg-white dark:!bg-gray-800 border-indigo-200 dark:border-indigo-800 focus:ring-indigo-500 font-bold`} 
+                                                value={formData.hariKerja} 
+                                                onChange={e=>setFormData({...formData, hariKerja: e.target.value})} 
+                                            />
+                                            <div className="text-[8.5px] text-indigo-500 dark:text-indigo-400 mt-1 font-bold">
+                                                💡 Kehadiran 7 Hari tanpa denda otomatis dapet bonus Rp 50.000!
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="bg-emerald-50/50 dark:bg-emerald-950/20 p-3 rounded-xl border border-emerald-100 dark:border-emerald-800/40">
+                                            <label className="block text-[10px] font-bold text-emerald-700 dark:text-emerald-400 mb-1.5 uppercase ml-1">Total Postingan Selama Periode</label>
+                                            <input 
+                                                type="number" 
+                                                min="0" 
+                                                required 
+                                                placeholder="0" 
+                                                className={`${InputCls} !bg-white dark:!bg-gray-800 border-emerald-200 dark:border-emerald-700 focus:ring-emerald-500`} 
+                                                value={formData.totalPostingan} 
+                                                onChange={e=>setFormData({...formData, totalPostingan: e.target.value})} 
+                                            />
+                                            <div className="text-[8.5px] text-emerald-500 dark:text-emerald-400 mt-1 font-bold">
+                                                *Kinerja kehadiran & capai target adalah penentu utama bonus
+                                            </div>
+                                        </div>
                                     </div>
 
-                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
                                         {/* T0 - Auto-Filled */}
-                                        <div className="sm:col-span-1 border-r border-gray-100 dark:border-gray-700 pr-2 relative">
+                                        <div className="col-span-1 sm:border-r border-gray-100 dark:border-gray-700 sm:pr-2 pb-4 sm:pb-0 border-b sm:border-b-0 last:border-b-0 last:pb-0 relative">
                                             <div className="text-[10px] font-black text-gray-700 dark:text-gray-300 mb-2 border-b border-gray-100 dark:border-gray-700 pb-1">KANDIDAT AKTIF (T0)</div>
                                             <div className="space-y-3">
                                                 <div>
@@ -737,7 +1186,7 @@ export const Payroll = ({ authUser }) => {
                                             </div>
                                         </div>
                                         {/* V0 - Auto-Filled */}
-                                        <div className="sm:col-span-1 border-r border-gray-100 dark:border-gray-700 pr-2 pl-2 relative">
+                                        <div className="col-span-1 sm:border-r border-gray-100 dark:border-gray-700 sm:pr-2 sm:pl-2 pb-4 sm:pb-0 border-b sm:border-b-0 last:border-b-0 last:pb-0 relative">
                                             <div className="text-[10px] font-black text-gray-700 dark:text-gray-300 mb-2 border-b border-gray-100 dark:border-gray-700 pb-1">KANDIDAT ELIT (V0)</div>
                                             <div className="space-y-3">
                                                 <div>
@@ -751,7 +1200,7 @@ export const Payroll = ({ authUser }) => {
                                             </div>
                                         </div>
                                         {/* T3 - Manual */}
-                                        <div className="sm:col-span-1 pl-2">
+                                        <div className="col-span-1 sm:pl-2 pb-4 sm:pb-0 relative">
                                             <div className="text-[10px] font-black text-gray-700 dark:text-gray-300 mb-2 border-b border-gray-100 dark:border-gray-700 pb-1">PROMOSI T3</div>
                                             <div className="space-y-3">
                                                 <div><label className="block text-[9px] font-black text-indigo-600 mb-1 uppercase">Dipromosikan (Mnl) <span className="text-rose-500">*</span></label><input type="number" min="0" required placeholder="0" className={`${InputCls} border-indigo-200 dark:border-indigo-800 focus:ring-indigo-500`} value={formData.t3} onChange={e=>setFormData({...formData, t3: e.target.value})} /></div>
@@ -769,13 +1218,97 @@ export const Payroll = ({ authUser }) => {
 
                                 {/* Section 3: Finansial Manual */}
                                 <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl border border-gray-200/80 dark:border-gray-700/80 shadow-sm">
-                                    <h4 className="text-[10px] font-black uppercase tracking-widest text-amber-500 mb-4 flex items-center"><i className="ph-fill ph-coins mr-1.5 text-sm"></i> 3. Komisi, Bonus & Deduksi</h4>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div><label className="block text-[10px] font-bold text-gray-500 mb-1.5 uppercase ml-1">Komisi</label><div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-xs">Rp</span><input type="number" min="0" placeholder="0" className={`${InputCls} pl-8`} value={formData.komisi} onChange={e=>setFormData({...formData, komisi: e.target.value})} /></div></div>
-                                        <div><label className="block text-[10px] font-bold text-gray-500 mb-1.5 uppercase ml-1">Other Bonus</label><div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-xs">Rp</span><input type="number" min="0" placeholder="0" className={`${InputCls} pl-8`} value={formData.otherBonus} onChange={e=>setFormData({...formData, otherBonus: e.target.value})} /></div></div>
+                                    <h4 className="text-[10px] font-black uppercase tracking-widest text-amber-500 mb-4 flex items-center"><i className="ph-fill ph-coins mr-1.5 text-sm"></i> 3. Gaji Pokok, Komisi, Bonus & Deduksi</h4>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-[10px] font-bold text-gray-500 mb-1.5 uppercase ml-1 flex items-center justify-between">
+                                                <span>Gaji Pokok <span className="text-indigo-500">(Mnl)</span></span>
+                                                <button 
+                                                    type="button" 
+                                                    onClick={() => setFormData({ ...formData, gajiPokok: String(liveStats.defaultPokok) })}
+                                                    className="text-[8px] text-indigo-500 hover:underline font-black uppercase tracking-widest"
+                                                    title="Set ke default berdasarkan Level Kinerja"
+                                                >
+                                                    Set Default ({formatCurrency(liveStats.defaultPokok)})
+                                                </button>
+                                            </label>
+                                            <div className="relative">
+                                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-xs">Rp</span>
+                                                <input 
+                                                    type="number" 
+                                                    min="0" 
+                                                    placeholder={String(liveStats.defaultPokok)} 
+                                                    className={`${InputCls} pl-8`} 
+                                                    value={formData.gajiPokok} 
+                                                    onChange={e => setFormData({ ...formData, gajiPokok: e.target.value })} 
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-[10px] font-bold text-gray-500 mb-1.5 uppercase ml-1 flex items-center justify-between">
+                                                <span>Komisi <span className="text-amber-500">(Auto)</span></span>
+                                                <button 
+                                                    type="button" 
+                                                    onClick={() => setFormData({ ...formData, komisi: String(liveStats.autoKomisi) })}
+                                                    className="text-[8px] text-amber-600 hover:underline font-black uppercase tracking-widest"
+                                                    title="Hitung otomatis berdasarkan rumus level"
+                                                >
+                                                    Terapkan Rumus ({formatCurrency(liveStats.autoKomisi)})
+                                                </button>
+                                            </label>
+                                            <div className="relative">
+                                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-xs">Rp</span>
+                                                <input 
+                                                    type="number" 
+                                                    min="0" 
+                                                    placeholder={String(liveStats.autoKomisi)} 
+                                                    className={`${InputCls} pl-8`} 
+                                                    value={formData.komisi} 
+                                                    onChange={e => setFormData({ ...formData, komisi: e.target.value })} 
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-[10px] font-bold text-gray-500 mb-1.5 uppercase ml-1 flex items-center justify-between">
+                                                <span>Other Bonus</span>
+                                                {Number(formData.hariKerja) === 7 && (
+                                                    <button 
+                                                        type="button" 
+                                                        onClick={() => setFormData({ ...formData, otherBonus: '50000' })}
+                                                        className="text-[8px] text-emerald-600 dark:text-emerald-400 hover:underline font-black uppercase tracking-widest"
+                                                        title="Terapkan bonus penuh 7 hari kerja tanpa denda"
+                                                    >
+                                                        Set 50K (7 Hari)
+                                                    </button>
+                                                )}
+                                            </label>
+                                            <div className="relative">
+                                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-xs">Rp</span>
+                                                <input 
+                                                    type="number" 
+                                                    min="0" 
+                                                    placeholder={Number(formData.hariKerja) === 7 ? "50000" : "0"} 
+                                                    className={`${InputCls} pl-8`} 
+                                                    value={formData.otherBonus} 
+                                                    onChange={e => setFormData({ ...formData, otherBonus: e.target.value })} 
+                                                />
+                                            </div>
+                                        </div>
                                         <div><label className="block text-[10px] font-bold text-gray-500 mb-1.5 uppercase ml-1">Bonus T0</label><div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-xs">Rp</span><input type="number" min="0" placeholder="0" className={`${InputCls} pl-8`} value={formData.bonusT0} onChange={e=>setFormData({...formData, bonusT0: e.target.value})} /></div></div>
                                         <div><label className="block text-[10px] font-bold text-gray-500 mb-1.5 uppercase ml-1">Bonus T3</label><div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-xs">Rp</span><input type="number" min="0" placeholder="0" className={`${InputCls} pl-8`} value={formData.bonusT3} onChange={e=>setFormData({...formData, bonusT3: e.target.value})} /></div></div>
-                                        <div className="col-span-2"><label className="block text-[10px] font-black text-rose-500 mb-1.5 uppercase ml-1">Potongan / Deduksi (-)</label><div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-rose-400 font-bold text-xs">Rp</span><input type="number" min="0" placeholder="0" className={`${InputCls} pl-8 border-rose-200 dark:border-rose-800 focus:ring-rose-500 text-rose-600`} value={formData.deduksi} onChange={e=>setFormData({...formData, deduksi: e.target.value})} /></div></div>
+                                        <div><label className="block text-[10px] font-black text-rose-500 mb-1.5 uppercase ml-1">Potongan / Deduksi (-)</label><div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-rose-400 font-bold text-xs">Rp</span><input type="number" min="0" placeholder="0" className={`${InputCls} pl-8 border-rose-200 dark:border-rose-800 focus:ring-rose-500 text-rose-600`} value={formData.deduksi} onChange={e=>setFormData({...formData, deduksi: e.target.value})} /></div></div>
+                                    </div>
+                                    <div className="mt-4 text-[9px] font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-950/30 px-3 py-2 rounded-xl border border-indigo-100 dark:border-indigo-900/50 space-y-1">
+                                        <p className="flex items-center gap-1"><i className="ph-bold ph-info text-xs"></i> <span>Gaji pokok default otomatis dihitung dari level kinerja staff (LVL 1: Rp 300.000, LVL 2: Rp 400.000, LVL 3: Rp 500.000).</span></p>
+                                        <p className="flex items-center gap-1"><i className="ph-bold ph-gift text-emerald-500 text-xs"></i> <span>Denda & Bonus Mingguan: Jika bekerja penuh selama 7 hari (Senin-Minggu) tanpa denda, otomatis mendapatkan tambahan Other Bonus sebesar <b>Rp 50.000</b>.</span></p>
+                                        <p className="flex items-center gap-1"><i className="ph-bold ph-lightning text-amber-500 text-xs"></i> <span>Rumus Komisi Level Gaji:</span></p>
+                                        <ul className="list-disc pl-4 space-y-0.5 font-mono text-[8.5px] text-gray-500 dark:text-gray-400">
+                                            <li>LVL 3: ACC T0 × Rp 5.000 + (T3 + Elit V0 ACC) × Rp 9.000</li>
+                                            <li>LVL 2: ACC T0 × Rp 5.000 + (T3 + Elit V0 ACC) × Rp 8.000</li>
+                                            <li>LVL 1: ACC T0 × Rp 5.000 + (T3 + Elit V0 ACC) × Rp 7.000</li>
+                                        </ul>
                                     </div>
                                 </div>
                             </div>
@@ -804,7 +1337,7 @@ export const Payroll = ({ authUser }) => {
                                         </div>
 
                                         <div className="bg-white/5 rounded-xl p-4 border border-white/10 space-y-2.5">
-                                            <div className="flex justify-between text-xs"><span className="text-gray-400 font-medium">Gaji Pokok (Auto)</span><span className="font-bold text-emerald-400">{formatCurrency(liveStats.pokok)}</span></div>
+                                            <div className="flex justify-between text-xs"><span className="text-gray-400 font-medium">{formData.gajiPokok !== '' ? 'Gaji Pokok (Mnl)' : 'Gaji Pokok (Auto)'}</span><span className="font-bold text-emerald-400">{formatCurrency(liveStats.pokok)}</span></div>
                                             <div className="flex justify-between text-xs"><span className="text-gray-400 font-medium">Total Komisi & Bonus</span><span className="font-bold text-gray-200">+{formatCurrency(liveStats.total - liveStats.pokok + (Number(formData.deduksi)||0))}</span></div>
                                             <div className="flex justify-between text-xs border-b border-gray-700/50 pb-2.5"><span className="text-rose-400 font-medium">Deduksi</span><span className="font-bold text-rose-500">-{formatCurrency(formData.deduksi)}</span></div>
                                             <div className="pt-2">
