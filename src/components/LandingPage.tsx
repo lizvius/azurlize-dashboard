@@ -91,11 +91,11 @@ export const LandingPage = ({ onEnterLogin, isDark, onToggleDark }: { onEnterLog
                     </div>
 
                     {/* Navigation Buttons */}
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2 sm:gap-3">
                         {/* Theme Toggle */}
                         <button 
                             onClick={onToggleDark}
-                            className="p-2.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-xl shadow-sm transition-transform active:scale-95 flex items-center justify-center"
+                            className="w-8 h-8 sm:w-10 sm:h-10 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-full shadow-sm transition-transform active:scale-95 flex items-center justify-center shrink-0"
                             aria-label="Toggle Theme"
                         >
                             <i className={`ph-bold ${isDark ? 'ph-sun' : 'ph-moon'} text-base`}></i>
@@ -104,9 +104,9 @@ export const LandingPage = ({ onEnterLogin, isDark, onToggleDark }: { onEnterLog
                         {/* CTA Portal Button */}
                         <button 
                             onClick={onEnterLogin}
-                            className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl text-xs uppercase tracking-wider shadow-md shadow-indigo-600/10 transition-all flex items-center gap-1.5 active:scale-95"
+                            className="px-3 sm:px-5 py-2 sm:py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl text-[10px] sm:text-xs uppercase tracking-wider shadow-md shadow-indigo-600/10 transition-all flex items-center gap-1.5 active:scale-95 whitespace-nowrap"
                         >
-                            <i className="ph-bold ph-sign-in text-sm"></i> Portal Perekrut
+                            <i className="ph-bold ph-sign-in text-sm"></i> <span className="hidden sm:inline">Portal Perekrut</span><span className="sm:hidden">Portal</span>
                         </button>
                     </div>
                 </div>

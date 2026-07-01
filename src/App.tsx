@@ -319,7 +319,7 @@ export default function App() {
     const orderedPages = Object.entries(permissions)
         .map(([id, val]: [string, any]) => ({
             id,
-            name: val.name || id,
+            name: (id === 'users' && authUser.role === 'Staff') ? 'Profil' : (val.name || id),
             view: val.view || ['Superadmin', 'Admin', 'Staff'],
             edit: val.edit || ['Superadmin', 'Admin'],
             orderIndex: val.orderIndex !== undefined ? val.orderIndex : 99,
@@ -379,7 +379,7 @@ export default function App() {
                         transition={{ duration: 0.25, ease: 'easeInOut' }}
                         className="flex flex-col items-center justify-center py-16 px-4 text-center"
                     >
-                        <div className="w-16 h-16 bg-red-50 dark:bg-red-950/40 rounded-2xl flex items-center justify-center text-red-500 mb-4 border border-red-100 dark:border-red-900/30">
+                        <div className="w-16 h-16 bg-red-50 dark:bg-red-950/40 rounded-full flex items-center justify-center text-red-500 mb-4 border border-red-100 dark:border-red-900/30">
                             <i className="ph-bold ph-shield-warning text-3xl"></i>
                         </div>
                         <h3 className="text-lg font-black text-gray-900 dark:text-white mb-1">Akses Ditolak</h3>
@@ -494,7 +494,7 @@ export default function App() {
                                                 title="Ganti Foto Profil"
                                                 className="relative shrink-0 group focus:outline-none cursor-pointer"
                                             >
-                                                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-xl text-white shadow-md ${roleStyle.avatarBg} overflow-hidden relative transition-transform group-hover:scale-105 duration-300`}>
+                                                <div className={`w-12 h-12 rounded-full flex items-center justify-center font-black text-xl text-white shadow-md ${roleStyle.avatarBg} overflow-hidden relative transition-transform group-hover:scale-105 duration-300`}>
                                                     {authUser.photoUrl || authUser.photo ? (
                                                         <img 
                                                             src={authUser.photoUrl || authUser.photo} 
@@ -660,7 +660,7 @@ export default function App() {
                                 title="Ganti Foto Profil"
                                 className="relative shrink-0 group focus:outline-none cursor-pointer"
                             >
-                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-lg text-white shrink-0 shadow-md ${roleStyle.avatarBg} overflow-hidden relative transition-transform group-hover:scale-105 duration-300`}>
+                                <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-lg text-white shrink-0 shadow-md ${roleStyle.avatarBg} overflow-hidden relative transition-transform group-hover:scale-105 duration-300`}>
                                     {authUser.photoUrl || authUser.photo ? (
                                         <img 
                                             src={authUser.photoUrl || authUser.photo} 

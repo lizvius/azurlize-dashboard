@@ -233,8 +233,7 @@ export const AvatarUpload: React.FC<AvatarUploadProps> = ({
                                 onDragOver={handleDragOver}
                                 onDragLeave={handleDragLeave}
                                 onDrop={handleDrop}
-                                onClick={triggerFileInput}
-                                className={`border-2 border-dashed rounded-2xl p-6 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-300 relative group overflow-hidden ${
+                                className={`border-2 border-dashed rounded-2xl p-6 flex flex-col items-center justify-center text-center transition-all duration-300 relative group overflow-hidden ${
                                     isDragging
                                         ? 'border-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/20'
                                         : previewUrl
@@ -247,12 +246,13 @@ export const AvatarUpload: React.FC<AvatarUploadProps> = ({
                                     ref={fileInputRef}
                                     onChange={handleFileChange}
                                     accept="image/*"
-                                    className="hidden"
+                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
                                     disabled={isUploading}
+                                    title="Pilih gambar"
                                 />
 
                                 {previewUrl ? (
-                                    <div className="relative z-10 flex flex-col items-center gap-4">
+                                    <div className="relative z-10 flex flex-col items-center gap-4 pointer-events-none">
                                         <div className="relative w-28 h-28 rounded-full overflow-hidden shadow-md border-4 border-white dark:border-gray-800">
                                             <img
                                                 src={previewUrl}

@@ -11,6 +11,7 @@ const SHEET_PAYROLL = '05_Payroll';
 const SHEET_TUTORIAL = '07_TUTORIAL';
 const SHEET_LANDING_CONFIG = '08_LANDING_CONFIG';
 const SHEET_PERMISSIONS = '09_PERMISSIONS';
+const SHEET_ACTIVITY_LOGS = '10_ACTIVITY_LOGS';
 
 /**
  * Endpoint Utama POST untuk menangani seluruh aksi dari frontend React.
@@ -25,7 +26,7 @@ function doPost(e) {
 
     // 1. FITUR USERS & AUTH
     if (action === 'login') {
-      return respondJson(handleLogin(data.username));
+      return respondJson(handleLogin(data.username, data.uid));
     }
     if (action === 'getUsers') {
       return respondJson(getUsers());
@@ -38,6 +39,12 @@ function doPost(e) {
     }
     if (action === 'deleteUser') {
       return respondJson(deleteUser(data.username));
+    }
+    if (action === 'getLogs') {
+      return respondJson(getLogs(data.username));
+    }
+    if (action === 'addLog') {
+      return respondJson(addLog(data));
     }
     if (action === 'getPermissions') {
       return respondJson(getPermissions());
@@ -249,7 +256,13 @@ function initAllSheets() {
     sheetPerms.appendRow(['daily_stats', 'Daily Stats', 'Superadmin,Admin,Staff', 'Superadmin,Admin', 4, 'ph-chart-bar', 'Management']);
     sheetPerms.appendRow(['payroll', 'Payroll', 'Superadmin,Admin,Staff', 'Superadmin,Admin', 5, 'ph-currency-circle-dollar', 'Management']);
     sheetPerms.appendRow(['users', 'User Accounts', 'Superadmin,Admin,Staff', 'Superadmin,Admin,Staff', 6, 'ph-user-gear', 'Management']);
-    sheetPerms.appendRow(['settings', 'Settings', 'Superadmin,Admin,Staff', 'Superadmin,Admin', 7, 'ph-gear', 'System']);
+  }
+
+  // 9. ACTIVITY LOGS
+  let sheetLogs = ss.getSheetByName(SHEET_ACTIVITY_LOGS);
+  if (!sheetLogs) {
+    sheetLogs = ss.insertSheet(SHEET_ACTIVITY_LOGS);
+    sheetLogs.appendRow(['id', 'username', 'action', 'description', 'timestamp']);
   }
 }
 
@@ -257,17 +270,35 @@ function initAllSheets() {
 // SECTION 1: USERS & AUTHENTICATION HANDLERS
 // ====================================================================
 
-function handleLogin(username) {
+function handleLogin(username, uid) {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_USERS);
   const data = sheet.getDataRange().getValues();
   const headers = data[0];
   
   const userIdx = headers.indexOf('username');
+  const uidIdx = headers.indexOf('uid');
   
   for (let i = 1; i < data.length; i++) {
     const sheetUser = String(data[i][userIdx]).trim();
+    const sheetUid = uidIdx !== -1 ? String(data[i][uidIdx]).trim() : '';
     
-    if (sheetUser.toLowerCase() === username.toLowerCase()) {
+    // Allow matching with or without '@' prefix for username
+    const cleanUsername = String(username || '').trim().toLowerCase();
+    const usernameWithAt = cleanUsername.startsWith('@') ? cleanUsername : '@' + cleanUsername;
+    const usernameWithoutAt = cleanUsername.startsWith('@') ? cleanUsername.slice(1) : cleanUsername;
+    
+    const dbUsername = sheetUser.toLowerCase();
+    const dbUsernameWithAt = dbUsername.startsWith('@') ? dbUsername : '@' + dbUsername;
+    const dbUsernameWithoutAt = dbUsername.startsWith('@') ? dbUsername.slice(1) : dbUsername;
+    
+    const usernameMatches = (dbUsername === cleanUsername) || 
+                            (dbUsernameWithAt === usernameWithAt) || 
+                            (dbUsernameWithoutAt === usernameWithoutAt);
+                            
+    const cleanUid = String(uid || '').trim();
+    const uidMatches = sheetUid === cleanUid;
+    
+    if (usernameMatches && uidMatches) {
       // Buat user object
       const userObj = {};
       headers.forEach((h, index) => {
@@ -278,11 +309,58 @@ function handleLogin(username) {
         return { status: 'error', message: 'Akun Anda sedang ditangguhkan / nonaktif. Hubungi Admin.' };
       }
       
+      // Catat log login
+      try {
+        const sheetLogs = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_ACTIVITY_LOGS);
+        if (sheetLogs) {
+          sheetLogs.appendRow(['log_' + Date.now(), userObj.username, 'Login Berhasil', 'Mengakses via Web Panel', new Date().toISOString()]);
+        }
+      } catch (e) {}
+
       return { status: 'success', data: userObj };
     }
   }
   
-  return { status: 'error', message: 'Username tidak ditemukan atau salah.' };
+  return { status: 'error', message: 'Username atau UID tidak ditemukan atau salah.' };
+}
+
+function getLogs(username) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_ACTIVITY_LOGS);
+  if (!sheet) return { status: 'success', data: [] };
+  const data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return { status: 'success', data: [] };
+  
+  const headers = data[0];
+  const result = [];
+  const cleanUser = String(username || '').trim().toLowerCase();
+  
+  for (let i = data.length - 1; i > 0; i--) {
+    const row = data[i];
+    const logUser = String(row[headers.indexOf('username')] || '').trim().toLowerCase();
+    
+    if (!username || logUser === cleanUser || logUser.slice(1) === cleanUser || logUser === cleanUser.slice(1)) {
+       const logObj = {};
+       headers.forEach((h, index) => {
+         logObj[h] = row[index];
+       });
+       result.push(logObj);
+    }
+  }
+  return { status: 'success', data: result };
+}
+
+function addLog(payload) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_ACTIVITY_LOGS);
+  if (!sheet) return { status: 'error', message: 'Sheet not found' };
+  
+  sheet.appendRow([
+    'log_' + Date.now(),
+    payload.username,
+    payload.action || 'activity',
+    payload.description || '',
+    new Date().toISOString()
+  ]);
+  return { status: 'success' };
 }
 
 function getPermissions() {
@@ -416,6 +494,16 @@ function updateUser(payload) {
       });
       
       sheet.getRange(i + 1, 1, 1, updatedRow.length).setValues([updatedRow]);
+      
+      // Catat log edit profile
+      try {
+        const sheetLogs = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_ACTIVITY_LOGS);
+        if (sheetLogs) {
+          const actionName = payload.photoBase64 ? 'Update Foto Profil' : 'Edit Profil';
+          sheetLogs.appendRow(['log_' + Date.now(), oldUsername, actionName, 'Data profil telah diperbarui', new Date().toISOString()]);
+        }
+      } catch (e) {}
+
       return { status: 'success', message: 'Data user berhasil diperbarui.' };
     }
   }

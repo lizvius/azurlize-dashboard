@@ -38,10 +38,26 @@ export const UserManagement = ({ authUser }: { authUser: any }) => {
     
     const [originalUsername, setOriginalUsername] = useState('');
     const [expandedUser, setExpandedUser] = useState<string | null>(null);
+    const [logs, setLogs] = useState<any[]>([]);
 
     const [adminPage, setAdminPage] = useState(1);
     const [staffPage, setStaffPage] = useState(1);
     const itemsPerPage = 10;
+
+    const fetchLogs = async () => {
+        try {
+            const response = await fetch(SCRIPT_URL, { 
+                method: 'POST', 
+                body: JSON.stringify({ action: 'getLogs', username: authUser.role === 'Staff' ? authUser.username : '' }) 
+            });
+            const result = await response.json();
+            if (result.status === 'success') {
+                setLogs(Array.isArray(result.data) ? result.data : []);
+            }
+        } catch (error) {
+            console.error("Gagal mengambil log aktivitas:", error);
+        }
+    };
 
     const isSuperadmin = authUser && authUser.role === 'Superadmin';
     const isPrivileged = authUser && hasEditAccess('users', authUser.role);
@@ -74,10 +90,12 @@ export const UserManagement = ({ authUser }: { authUser: any }) => {
     };
 
     useEffect(() => { 
-        fetchUsers(false); 
+        fetchUsers(false);
+        fetchLogs();
         
         const handleSync = () => {
             fetchUsers(false);
+            fetchLogs();
         };
         window.addEventListener('refreshActiveTab', handleSync);
         return () => {
@@ -396,18 +414,61 @@ export const UserManagement = ({ authUser }: { authUser: any }) => {
         return { text: `Aktif hari ini, ${String(10 + (uidNum % 4)).padStart(2, '0')}:${String(10 + (uidNum % 50)).padStart(2, '0')}`, color: 'text-gray-400 dark:text-gray-500' };
     };
 
-    const getSimulatedTimeline = (user: any) => {
+    const formatLogTimeline = (user: any) => {
         const isOffline = user.status === 'Nonaktif' || user.status === 'Suspend';
+        
+        const userLogs = logs.filter(log => {
+            const lUser = String(log.username).toLowerCase();
+            const qUser = String(user.username).toLowerCase();
+            return lUser === qUser || lUser === '@'+qUser || '@'+lUser === qUser;
+        });
+
         if (isOffline) {
             return [
                 { time: 'Beberapa hari lalu', icon: 'ph-bold ph-user-minus text-rose-500 bg-rose-50 dark:bg-rose-500/10', title: 'Akun Di-suspend', desc: 'Akses ke dashboard dibekukan oleh Admin' }
             ];
         }
-        return [
-            { time: '10 menit yang lalu', icon: 'ph-bold ph-sign-in text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10', title: 'Login Berhasil', desc: 'Mengakses via Web Panel' },
-            { time: '3 jam yang lalu', icon: 'ph-bold ph-floppy-disk text-indigo-500 bg-indigo-50 dark:bg-indigo-500/10', title: 'Input Kandidat Harian', desc: 'Berhasil melakukan update 5 database data' },
-            { time: 'Kemarin, 17:12', icon: 'ph-bold ph-chart-line-up text-amber-500 bg-amber-50 dark:bg-amber-500/10', title: 'Meninjau Laporan Mingguan', desc: 'Membuka diagram Recruitment Goals harian' }
-        ];
+        
+        if (userLogs.length === 0) {
+            return [
+                { time: 'Baru saja', icon: 'ph-bold ph-user-plus text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10', title: 'Akun Terdaftar', desc: 'Menunggu aktivitas pertama...' }
+            ];
+        }
+
+        const getTimeAgo = (dateStr: string) => {
+            if (!dateStr) return 'Waktu tidak diketahui';
+            const date = new Date(dateStr);
+            if (isNaN(date.getTime())) return dateStr;
+            
+            const now = new Date();
+            const diffMs = now.getTime() - date.getTime();
+            const diffMins = Math.floor(diffMs / 60000);
+            const diffHours = Math.floor(diffMins / 60);
+            const diffDays = Math.floor(diffHours / 24);
+            
+            if (diffMins < 1) return 'Baru saja';
+            if (diffMins < 60) return `${diffMins} menit yang lalu`;
+            if (diffHours < 24) return `${diffHours} jam yang lalu`;
+            if (diffDays === 1) return 'Kemarin';
+            return `${diffDays} hari yang lalu`;
+        };
+
+        const getActionIcon = (action: string) => {
+            const a = action.toLowerCase();
+            if (a.includes('login')) return 'ph-bold ph-sign-in text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10';
+            if (a.includes('input') || a.includes('tambah')) return 'ph-bold ph-floppy-disk text-indigo-500 bg-indigo-50 dark:bg-indigo-500/10';
+            if (a.includes('hapus')) return 'ph-bold ph-trash text-rose-500 bg-rose-50 dark:bg-rose-500/10';
+            if (a.includes('edit') || a.includes('update')) return 'ph-bold ph-pencil-simple text-amber-500 bg-amber-50 dark:bg-amber-500/10';
+            if (a.includes('laporan') || a.includes('diagram')) return 'ph-bold ph-chart-line-up text-purple-500 bg-purple-50 dark:bg-purple-500/10';
+            return 'ph-bold ph-clock-counter-clockwise text-gray-500 bg-gray-50 dark:bg-gray-500/10';
+        };
+
+        return userLogs.slice(0, 5).map(log => ({
+            time: getTimeAgo(log.timestamp),
+            icon: getActionIcon(log.action),
+            title: log.action,
+            desc: log.description
+        }));
     };
 
     const renderUserList = (dataList: any[]) => (
@@ -446,10 +507,10 @@ export const UserManagement = ({ authUser }: { authUser: any }) => {
                                         <img 
                                             src={displayPhoto} 
                                             alt={u.name} 
-                                            className={`w-11 h-11 sm:w-13 sm:h-13 rounded-2xl object-cover shrink-0 shadow-sm border-2 ${st.imgBorder}`} 
+                                            className={`w-11 h-11 sm:w-13 sm:h-13 rounded-full object-cover shrink-0 shadow-sm border-2 ${st.imgBorder}`} 
                                         />
                                     ) : (
-                                        <div className={`w-11 h-11 sm:w-13 sm:h-13 rounded-2xl flex items-center justify-center font-black text-lg sm:text-xl shrink-0 shadow-inner ${st.avatar}`}>
+                                        <div className={`w-11 h-11 sm:w-13 sm:h-13 rounded-full flex items-center justify-center font-black text-lg sm:text-xl shrink-0 shadow-inner ${st.avatar}`}>
                                             {u.name && typeof u.name === 'string' ? u.name.charAt(0).toUpperCase() : '?'}
                                         </div>
                                     )}
@@ -639,6 +700,132 @@ export const UserManagement = ({ authUser }: { authUser: any }) => {
 
     const inputClass = "w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-medium transition-all";
 
+    const sharedAvatarUpload = (
+        <AvatarUpload
+            isOpen={isAvatarUploadOpen}
+            onClose={() => setIsAvatarUploadOpen(false)}
+            currentPhotoUrl={(selectedUserDetail || users.find(u => u.username === authUser.username) || authUser).photo || (selectedUserDetail || users.find(u => u.username === authUser.username) || authUser).photoUrl}
+            username={(selectedUserDetail || authUser).username}
+            name={(selectedUserDetail || authUser).name}
+            onUploadSuccess={(newPhotoUrl) => {
+                // Refresh the local user details
+                if (selectedUserDetail) {
+                    setSelectedUserDetail({
+                        ...selectedUserDetail,
+                        photo: newPhotoUrl,
+                        photoUrl: newPhotoUrl
+                    });
+                }
+                
+                // If updating own profile, update session as well
+                if (authUser && authUser.username === (selectedUserDetail || authUser).username) {
+                    const updatedAuth = {
+                        ...authUser,
+                        photoUrl: newPhotoUrl,
+                        photo: newPhotoUrl
+                    };
+                    localStorage.setItem('recruitOps_session', JSON.stringify(updatedAuth));
+                    window.dispatchEvent(new Event('sessionUpdated'));
+                }
+                
+                // Re-fetch users lists
+                fetchUsers(false);
+                fetchLogs();
+            }}
+        />
+    );
+
+    if (authUser.role === 'Staff') {
+        const u = users.find(user => user.username === authUser.username) || authUser;
+        const st = getRoleStyles(u.role, true);
+        const displayPhoto = u.photo || u.photoUrl;
+        const activeState = getLastActiveInfo(u);
+        const timeline = formatLogTimeline(u);
+        
+        return (
+            <div className="space-y-6 sm:space-y-8 max-w-4xl mx-auto">
+                <div className="bg-white/80 dark:bg-gray-800/90 backdrop-blur-xl rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xl overflow-hidden relative">
+                    <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 dark:bg-indigo-500/5 rounded-full blur-3xl pointer-events-none"></div>
+
+                    <div className="p-6 sm:p-8 relative z-10">
+                        {/* Header */}
+                        <div className="flex flex-col justify-between items-start mb-6 gap-4 border-b border-gray-100 dark:border-gray-700/50 pb-6">
+                            <h3 className="font-black text-lg sm:text-xl flex items-center text-gray-900 dark:text-white tracking-tight">
+                                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white shadow-lg shadow-indigo-500/30 mr-3 shrink-0">
+                                    <i className="ph-bold ph-user text-xl sm:text-2xl"></i>
+                                </div>
+                                <div>
+                                    <span className="block font-black">Profil Anda</span>
+                                    <span className="block text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">Ringkasan Akun & Aktivitas</span>
+                                </div>
+                            </h3>
+                        </div>
+
+                        {/* Profile Info */}
+                        <div className="flex flex-col sm:flex-row gap-6 items-start sm:items-center bg-gray-50 dark:bg-gray-800/50 p-5 rounded-2xl border border-gray-100 dark:border-gray-700/50 mb-8">
+                            <div 
+                                className="relative shrink-0 group cursor-pointer"
+                                onClick={() => setIsAvatarUploadOpen(true)}
+                                title="Ganti Foto Profil"
+                            >
+                                <div className="w-20 h-20 rounded-full overflow-hidden relative shadow-sm border-2 transition-transform duration-300 group-hover:scale-105">
+                                    {displayPhoto ? (
+                                        <img src={displayPhoto} alt={u.name} className={`w-full h-full object-cover ${st.imgBorder}`} />
+                                    ) : (
+                                        <div className={`w-full h-full flex items-center justify-center font-black text-2xl text-white ${st.imgBorder} ${st.card}`}>
+                                            {String(u.name || '?').charAt(0).toUpperCase()}
+                                        </div>
+                                    )}
+                                    <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <i className="ph-bold ph-camera text-white text-xl"></i>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="flex-1 space-y-1.5">
+                                <h4 className="text-xl sm:text-2xl font-black text-gray-900 dark:text-white tracking-tight flex items-center gap-2">
+                                    {u.name}
+                                </h4>
+                                <div className="flex flex-wrap gap-2 text-xs font-bold text-gray-500 dark:text-gray-400 mt-2">
+                                    <span className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-widest ${st.badge}`}>{u.role}</span>
+                                    {u.tanggalBergabung && (
+                                        <span className="flex items-center gap-1 bg-gray-200/50 dark:bg-gray-700/50 px-2.5 py-1 rounded-md">
+                                            <i className="ph-bold ph-calendar-blank"></i> Bergabung: {formatToDDMMYYYY(u.tanggalBergabung)}
+                                        </span>
+                                    )}
+                                </div>
+                                <div className={`text-xs mt-2 ${activeState.color}`}>{activeState.text}</div>
+                            </div>
+                        </div>
+
+                        {/* Activity Log */}
+                        <div>
+                            <h4 className="text-sm font-black text-gray-900 dark:text-white mb-4 uppercase tracking-widest flex items-center">
+                                <i className="ph-fill ph-clock-counter-clockwise text-indigo-500 mr-2 text-lg"></i>
+                                Log Aktivitas Terakhir
+                            </h4>
+                            <div className="relative border-l-2 border-gray-100 dark:border-gray-700/50 ml-3 sm:ml-4 pl-5 sm:pl-6 space-y-5">
+                                {timeline.map((item: any, idx: number) => (
+                                    <div key={idx} className="relative">
+                                        <div className="absolute -left-[30px] sm:-left-[35px] top-1 w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center ring-4 ring-white dark:ring-gray-800 shadow-sm border border-gray-100 dark:border-gray-700">
+                                            <i className={`${item.icon} text-xs sm:text-sm p-1 rounded-full w-full h-full flex items-center justify-center`}></i>
+                                        </div>
+                                        <div className="bg-gray-50 dark:bg-gray-800/40 p-3 sm:p-4 rounded-xl border border-gray-100 dark:border-gray-700/50 group hover:border-indigo-200 dark:hover:border-indigo-800/50 transition-colors">
+                                            <span className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1.5 block">{item.time}</span>
+                                            <h5 className="text-xs sm:text-sm font-bold text-gray-900 dark:text-gray-100">{item.title}</h5>
+                                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{item.desc}</p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+                {sharedAvatarUpload}
+            </div>
+        );
+    }
+
     return (
         <div className="space-y-6 sm:space-y-8">
             <div className="bg-white/80 dark:bg-gray-800/90 backdrop-blur-xl rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xl overflow-hidden relative min-h-[500px]">
@@ -788,7 +975,7 @@ export const UserManagement = ({ authUser }: { authUser: any }) => {
                                     title={canEditDetail ? "Ganti Foto Profil" : undefined}
                                     className={`relative shrink-0 group focus:outline-none ${canEditDetail ? 'cursor-pointer' : 'cursor-default'}`}
                                 >
-                                    <div className="w-20 h-20 rounded-2xl overflow-hidden relative shadow-md border-4 border-white dark:border-gray-800 transition-transform duration-300 group-hover:scale-105">
+                                    <div className="w-20 h-20 rounded-full overflow-hidden relative shadow-md border-4 border-white dark:border-gray-800 transition-transform duration-300 group-hover:scale-105">
                                         {selectedUserDetail.photo || selectedUserDetail.photoUrl ? (
                                             <img 
                                                 src={selectedUserDetail.photo || selectedUserDetail.photoUrl} 
@@ -858,7 +1045,7 @@ export const UserManagement = ({ authUser }: { authUser: any }) => {
                                     Aktivitas Terakhir & Status Sesi
                                 </h4>
                                 <div className="space-y-4">
-                                    {getSimulatedTimeline(selectedUserDetail).map((item, idx) => (
+                                    {formatLogTimeline(selectedUserDetail).map((item, idx) => (
                                         <div key={idx} className="flex gap-3">
                                             <div className="flex flex-col items-center">
                                                 <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 border border-gray-100 dark:border-gray-800 shadow-sm relative">
@@ -951,8 +1138,8 @@ export const UserManagement = ({ authUser }: { authUser: any }) => {
                             
                             <div className="flex flex-col items-center mb-4 sm:mb-6">
                                 <div className="relative group cursor-pointer mb-2">
-                                    <input type="file" accept="image/*" onChange={handlePhotoChange} className="hidden" id="photo-upload-modal" disabled={isSubmitting} />
-                                    <label htmlFor="photo-upload-modal" className="block relative w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden shadow-lg border-4 border-white dark:border-gray-700 cursor-pointer">
+                                    <label className="block relative w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden shadow-lg border-4 border-white dark:border-gray-700 cursor-pointer">
+                                        <input type="file" accept="image/*" onChange={handlePhotoChange} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20" disabled={isSubmitting} />
                                         {(formData.previewUrl || formData.photo || formData.photoUrl) ? (
                                             <img src={formData.previewUrl || formData.photo || formData.photoUrl} alt="Preview" className="w-full h-full object-cover" />
                                         ) : (
@@ -1112,37 +1299,7 @@ export const UserManagement = ({ authUser }: { authUser: any }) => {
                 </div>
             )}
             {/* Avatar Upload Modal inside UserManagement */}
-            {selectedUserDetail && (
-                <AvatarUpload
-                    isOpen={isAvatarUploadOpen}
-                    onClose={() => setIsAvatarUploadOpen(false)}
-                    currentPhotoUrl={selectedUserDetail.photo || selectedUserDetail.photoUrl}
-                    username={selectedUserDetail.username}
-                    name={selectedUserDetail.name}
-                    onUploadSuccess={(newPhotoUrl) => {
-                        // Refresh the local user details
-                        setSelectedUserDetail({
-                            ...selectedUserDetail,
-                            photo: newPhotoUrl,
-                            photoUrl: newPhotoUrl
-                        });
-                        
-                        // If updating own profile, update session as well
-                        if (authUser && authUser.username === selectedUserDetail.username) {
-                            const updatedAuth = {
-                                ...authUser,
-                                photoUrl: newPhotoUrl,
-                                photo: newPhotoUrl
-                            };
-                            localStorage.setItem('recruitOps_session', JSON.stringify(updatedAuth));
-                            window.dispatchEvent(new Event('sessionUpdated'));
-                        }
-                        
-                        // Re-fetch users lists
-                        fetchUsers(false);
-                    }}
-                />
-            )}
+            {sharedAvatarUpload}
 
             {/* Removed legacy photo posting modal */}
         </div>
