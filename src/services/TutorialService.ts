@@ -104,7 +104,7 @@ export const TutorialService = {
             }
             
             const result = await response.json();
-            if (result && result.success && Array.isArray(result.data)) {
+            if (result && (result.status === 'success' || result.success) && Array.isArray(result.data)) {
                 // Ensure every step has an images array (even if empty) to prevent crashes
                 return result.data.map((item: any) => ({
                     step: Number(item.step),
@@ -140,7 +140,7 @@ export const TutorialService = {
             }
             
             const result = await response.json();
-            if (result && result.success) {
+            if (result && (result.status === 'success' || result.success)) {
                 return true;
             }
             
@@ -166,7 +166,7 @@ export const TutorialService = {
             }
             
             const result = await response.json();
-            if (result && result.success && result.data) {
+            if (result && (result.status === 'success' || result.success) && result.data) {
                 // Return fetched configuration with default fallback merge
                 return {
                     ...DEFAULT_LANDING_CONFIG,
@@ -198,7 +198,7 @@ export const TutorialService = {
             }
             
             const result = await response.json();
-            if (result && result.success) {
+            if (result && (result.status === 'success' || result.success)) {
                 return true;
             }
             throw new Error(result?.error || 'Respon gagal dari Sheets');
